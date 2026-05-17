@@ -1,0 +1,2378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>EdgeVideo — Compilation Studio</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script>window.react = window.React;</script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/lucide-react@0.383.0/dist/umd/lucide-react.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#06090E;font-family:system-ui,-apple-system,sans-serif;min-height:100vh;padding:16px;transition:background 0.2s}
+#root{width:100%;max-width:1400px;margin:0 auto}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:#444;border-radius:3px}
+::-webkit-scrollbar-track{background:transparent}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+input[type=range]{-webkit-appearance:none;height:4px;border-radius:2px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;cursor:pointer;margin-top:-5px}
+#ev-err{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#03060A;z-index:9999;padding:40px;font-family:'Courier New',monospace;overflow:auto}
+#ev-err h2{color:#E85050;font-size:14px;letter-spacing:.1em;margin-bottom:16px}
+#ev-err pre{color:#9AAEC0;font-size:11px;line-height:1.8;background:#0F1520;padding:16px;border-radius:6px;border:1px solid #182434;white-space:pre-wrap;word-break:break-all}
+</style>
+<script>
+(function(){
+  function show(msg,src,line){var b=document.getElementById('ev-err');if(!b)return;b.style.display='block';b.innerHTML='<h2>STARTUP ERROR</h2><pre>'+(msg||'?')+'\nSource: '+(src||'?')+'\nLine: '+(line||'?')+'</pre>';}
+  window.onerror=function(m,s,l,c,e){show((e&&e.stack)||m,s,l);return false;};
+  window.addEventListener('unhandledrejection',function(e){show(e.reason&&(e.reason.stack||e.reason.message)||String(e.reason),'Promise','--');});
+})();
+</script>
+</head>
+<body>
+<div id="ev-err"></div>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useRef,useEffect,useCallback,useMemo,useContext,createContext,memo} = React;
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+const ICON_NAMES=['Film','Wand','Scissors','Music','Download','Play','Pause','Square',
+  'Sparkles','Upload','Layers','RefreshCw','Plus','X','CircleCheck','Loader','Settings',
+  'Cpu','Zap','Eye','Image','Monitor','Smartphone','Hash','Key','TriangleAlert','Wifi',
+  'ChevronUp','ChevronDown','Clipboard','Video','Clock','Crosshair','Maximize2','FolderOpen','Trash2','Type',
+  'Archive','Save'];
+const missingIcons=ICON_NAMES.filter(n=>!LucideReact[n]);
+if(missingIcons.length){const b=document.getElementById('ev-err');if(b){b.style.display='block';b.innerHTML='<h2>MISSING ICONS</h2><pre>'+missingIcons.join(', ')+'</pre>';}}
+function SafeIcon({name,size=16,...rest}){
+  const Ic=LucideReact[name];
+  if(!Ic)return<span title={'?'+name} style={{display:'inline-block',width:size,height:size,background:'#E85050',borderRadius:2,flexShrink:0}}/>;
+  return<Ic size={size} {...rest}/>;
+}
+const {Film,Wand,Scissors,Music,Download,Play,Pause,Square,Sparkles,Upload,Layers,RefreshCw,Plus,X,
+  CircleCheck,Loader,Settings,Cpu,Zap,Eye,Image,Monitor,Smartphone,Hash,Key,TriangleAlert,Wifi,
+  ChevronUp,ChevronDown,Clipboard,Video,Clock,Crosshair,Maximize2,FolderOpen,Trash2,Type,
+  Archive,Save}=LucideReact;
+
+// ── Themes ────────────────────────────────────────────────────────────────────
+const MONO="'Courier New','Consolas',monospace",SANS="system-ui,-apple-system,sans-serif";
+const THEMES={
+  dark:{bg:'#06090E',surface:'#0B1018',panel:'#0F1520',border:'#1E2E40',
+    accent:'#00C4AE',accentBg:'#003D38',blue:'#4A94FF',blueBg:'#0A1A3A',
+    amber:'#E8A020',amberBg:'#2A1A00',green:'#22C85A',greenBg:'#0A2010',
+    red:'#E85050',redBg:'#280A0A',text:'#AABFD4',textHi:'#EBF4FF',textDim:'#526878',mono:MONO,sans:SANS},
+  light:{bg:'#D8E6F0',surface:'#FFFFFF',panel:'#EEF4FA',border:'#A8BCD0',
+    accent:'#007060',accentBg:'#A0DDD8',blue:'#1455B0',blueBg:'#B8D0F0',
+    amber:'#A04800',amberBg:'#FFD8A0',green:'#166830',greenBg:'#B8E0C4',
+    red:'#A01010',redBg:'#F8CCCC',text:'#182C42',textHi:'#040E1A',textDim:'#4A6070',mono:MONO,sans:SANS},
+  highvis:{bg:'#000000',surface:'#111111',panel:'#1A1A1A',border:'#FFD600',
+    accent:'#00FFCC',accentBg:'#003322',blue:'#55BBFF',blueBg:'#001A33',
+    amber:'#FFD600',amberBg:'#332A00',green:'#00FF66',greenBg:'#003311',
+    red:'#FF5555',redBg:'#330000',text:'#E8E8E8',textHi:'#FFFFFF',textDim:'#AAAAAA',mono:MONO,sans:SANS}
+};
+const ThemeCtx=createContext(THEMES.dark);
+const useTheme=()=>useContext(ThemeCtx);
+const mkInp=C=>({background:C.panel,border:`1px solid ${C.border}`,borderRadius:5,color:C.textHi,fontFamily:C.sans,fontSize:12,padding:'7px 10px',width:'100%',outline:'none'});
+const mkLbl=C=>({fontSize:10,fontFamily:C.mono,color:C.accent,letterSpacing:'0.1em',textTransform:'uppercase',display:'block',marginBottom:5});
+const mkCard=C=>({background:C.panel,border:`1px solid ${C.border}`,borderRadius:7,padding:14});
+const mkSecT=C=>({fontSize:9,fontFamily:C.mono,color:C.textDim,letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:10,display:'block'});
+function Btn({children,onClick,disabled,color,style={}}){
+  const C=useTheme();
+  return<button onClick={onClick} disabled={disabled} style={{background:color==='sec'?'transparent':C.accent,color:color==='sec'?C.text:C.bg,border:color==='sec'?`1px solid ${C.border}`:'none',borderRadius:5,padding:'8px 14px',fontSize:11,fontFamily:C.mono,fontWeight:700,cursor:disabled?'not-allowed':'pointer',opacity:disabled?0.5:1,display:'flex',alignItems:'center',gap:7,letterSpacing:'0.06em',...style}}>{children}</button>;
+}
+function Tag({children,color,bg}){
+  const C=useTheme();const tc=color||C.accent,tb=bg||C.accentBg;
+  return<span style={{fontSize:9,fontFamily:C.mono,color:tc,background:tb,border:`1px solid ${tc}44`,padding:'2px 7px',borderRadius:3,letterSpacing:'0.08em'}}>{children}</span>;
+}
+function Field({label,children}){
+  const C=useTheme();
+  return<div style={{marginBottom:14}}><label style={mkLbl(C)}>{label}</label>{children}</div>;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const OLLAMA_URL='http://localhost:11434',MODEL_ID='gemma4:e4b';
+const COMFY_URL='http://localhost:8188';
+const SERVE_URL='http://localhost:8765';
+// Embedded launcher .bat so the offline "START SERVER" button can hand the
+// EdgeVideo Console (Python) now manages the server — no BAT needed.
+let _anthropicKey='',_ltxCkpt='ltx-video-2b-v0.9.1.safetensors';
+function getAnthropicKey(){return _anthropicKey;}
+function setAnthropicKey(k){_anthropicKey=k.trim();}
+function fmtTime(s){const m=Math.floor(s/60),sec=Math.floor(s%60);return`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;}
+function uid(){return Math.random().toString(36).slice(2,10);}
+
+// ── Frame extraction ──────────────────────────────────────────────────────────
+async function extractFrameAsBase64(videoEl,timeS,w=320){
+  return new Promise((resolve,reject)=>{
+    const t=setTimeout(()=>{videoEl.removeEventListener('seeked',onS);reject(new Error('seek timeout'));},6000);
+    function onS(){
+      clearTimeout(t);videoEl.removeEventListener('seeked',onS);
+      const h=Math.round(w*videoEl.videoHeight/Math.max(1,videoEl.videoWidth));
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      c.getContext('2d').drawImage(videoEl,0,0,w,h);
+      resolve(c.toDataURL('image/jpeg',0.8).split(',')[1]);
+    }
+    videoEl.addEventListener('seeked',onS,{once:true});
+    videoEl.currentTime=Math.max(0,Math.min(timeS,(videoEl.duration||0)-0.01));
+  });
+}
+
+// ── Frame extraction from blob URL (no DOM video element required) ───────────
+async function extractFrameFromUrl(url,timeS,w=512){
+  return new Promise((resolve,reject)=>{
+    const vid=document.createElement('video');
+    vid.preload='auto';vid.muted=true;vid.crossOrigin='anonymous';
+    const bail=setTimeout(()=>{vid.src='';reject(new Error('Frame extract timeout'));},15000);
+    const doSeek=()=>{
+      const t2=setTimeout(()=>{clearTimeout(bail);vid.src='';reject(new Error('Seek timeout'));},8000);
+      vid.addEventListener('seeked',()=>{
+        clearTimeout(t2);clearTimeout(bail);
+        const h=Math.round(w*vid.videoHeight/Math.max(1,vid.videoWidth));
+        const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+        cv.getContext('2d').drawImage(vid,0,0,w,h);
+        vid.src='';
+        resolve(cv.toDataURL('image/jpeg',0.85).split(',')[1]);
+      },{once:true});
+      vid.currentTime=Math.max(0,timeS);
+    };
+    vid.addEventListener('loadedmetadata',doSeek,{once:true});
+    vid.addEventListener('error',()=>{clearTimeout(bail);reject(new Error('Video load error'));},{once:true});
+    vid.src=url;
+  });
+}
+
+// ── Gemma 4 multimodal clip analysis ─────────────────────────────────────────
+
+// Salvage individual fields from a truncated (no closing }) JSON string.
+function _salvagePartialJson(txt){
+  const out={};
+  for(const f of ['subject','action','setting','mood','suggested_label','editing_notes','pacing']){
+    const m=txt.match(new RegExp('"'+f+'"\\s*:\\s*"([^"]*)"'));
+    if(m)out[f]=m[1];
+  }
+  const cp=txt.match(/"color_palette"\s*:\s*\[([^\]]*)/);
+  if(cp){
+    const cols=[...cp[1].matchAll(/"(#[0-9a-fA-F]{3,8})"/g)].map(m=>m[1]);
+    if(cols.length)out.color_palette=cols;
+  }
+  return Object.keys(out).length>=3?out:null;
+}
+
+async function analyzeClipWithGemma(frames){
+  const r=await fetch(`${OLLAMA_URL}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:MODEL_ID,stream:false,options:{temperature:0.3,num_predict:1024},
+      messages:[{role:'user',
+        content:'Analyze these video frames. Return ONLY a raw JSON object — no markdown, no explanation, no code fences. Keep all string values under 8 words. Example: {"subject":"live band on stage","action":"playing instruments","setting":"dark indoor venue","mood":"energetic","color_palette":["#1a1a2e","#e94560","#f5a623"],"suggested_label":"band performance","editing_notes":"cut on beat drops","pacing":"fast"}',
+        images:frames}]})});
+  if(!r.ok)throw new Error(`Ollama ${r.status} — is Gemma 4 running? (ollama run gemma4:e4b)`);
+  const d=await r.json();
+  const txt=(d.message?.content||'').trim();
+  if(!txt)throw new Error('Gemma returned an empty response');
+  // Strip markdown fences then find the outermost { } block
+  const stripped=txt.replace(/```json\n?|```/g,'').trim();
+  const start=stripped.indexOf('{');
+  const end=stripped.lastIndexOf('}');
+  if(start!==-1&&end>start){
+    try{return JSON.parse(stripped.slice(start,end+1));}catch(_){}
+  }
+  // Truncated response — no closing brace. Try to salvage whatever fields were written.
+  if(start!==-1){
+    const partial=_salvagePartialJson(stripped.slice(start));
+    if(partial)return partial;
+  }
+  throw new Error(`Gemma response could not be parsed as JSON. Raw: ${txt.slice(0,120)}`);
+}
+
+// ── Gemma 4 text call ─────────────────────────────────────────────────────────
+async function gemma4Call(sys,user,onSource){
+  try{
+    const r=await fetch(`${OLLAMA_URL}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:MODEL_ID,stream:false,options:{temperature:0.7,num_predict:1024},
+        messages:[{role:'system',content:sys},{role:'user',content:user}]})});
+    if(r.ok){const d=await r.json();onSource?.('local');return d.message?.content||'';}
+    throw new Error(`Ollama HTTP ${r.status}`);
+  }catch(err){
+    const key=getAnthropicKey();if(!key)throw new Error(`Ollama unavailable: ${err.message}. No API key set.`);
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1024,
+        system:sys,messages:[{role:'user',content:user}]})});
+    const d=await r.json();if(!r.ok)throw new Error(d.error?.message||`Anthropic ${r.status}`);
+    onSource?.('cloud');return d.content?.[0]?.text||'';
+  }
+}
+
+// ── ComfyUI ───────────────────────────────────────────────────────────────────
+let _t5Encoder='t5xxl_fp8_e4m3fn.safetensors'; // T5-XXL fp8 — loaded separately from video model
+// startFrame: ComfyUI filename from uploadFrameToComfy, or null for pure text-to-video
+function buildLTXWorkflow(prompt,width=512,height=288,frames=49,startFrame=null){
+  // LTX-Video 2b v0.9.1 workflow — current ComfyUI node names
+  // Model file has no bundled text encoder → CLIPLoader (type=ltxv) loads T5-XXL separately
+  // Width/height must be divisible by 32. Frames must be 8N+1 (25,33,41,49,57,65,73,97)
+  // RTX 4070 Laptop 8GB: DynamicVRAM swaps T5-XXL and video model between GPU/RAM automatically
+  // startFrame: when provided adds LoadImage → ImageScale → VAEEncode → guiding_latent (I2V)
+  const neg='worst quality, inconsistent motion, blurry, jittery, distorted, watermark';
+  const seed=Math.floor(Math.random()*2**31);
+  const base={
+    // Step 0: Load T5-XXL text encoder (fp8, ~4.7GB — DynamicVRAM will swap to CPU after encoding)
+    '0':{class_type:'CLIPLoader',inputs:{clip_name:_t5Encoder,type:'ltxv'}},
+    // Step 1: Load video model (MODEL[0]) + VAE (VAE[2]) — no CLIP bundled in this checkpoint
+    '1':{class_type:'CheckpointLoaderSimple',inputs:{ckpt_name:_ltxCkpt}},
+    // Step 2-3: Encode positive/negative prompts using T5-XXL
+    '2':{class_type:'CLIPTextEncode',inputs:{clip:['0',0],text:prompt}},
+    '3':{class_type:'CLIPTextEncode',inputs:{clip:['0',0],text:neg}},
+    // Step 4: Attach frame_rate metadata to conditioning (required for LTX-Video sampling)
+    // guiding_latent wired in below when startFrame is provided
+    '4':{class_type:'LTXVConditioning',inputs:{positive:['2',0],negative:['3',0],frame_rate:24}},
+    // Step 5: Create empty latent video tensor
+    '5':{class_type:'EmptyLTXVLatentVideo',inputs:{width,height,length:frames,batch_size:1}},
+    // Step 6: Patch model sampling for LTX-Video's flow-matching schedule
+    '6':{class_type:'ModelSamplingLTXV',inputs:{model:['1',0],max_shift:2.05,base_shift:0.95,latent:['5',0]}},
+    // Step 7: Build LTXV sigmas (stretch=true maps to [terminal, 1] range for flow matching)
+    '7':{class_type:'LTXVScheduler',inputs:{steps:25,max_shift:2.05,base_shift:0.95,stretch:true,terminal:0.1,latent:['5',0]}},
+    // Step 8: Euler sampler (recommended for LTX-Video)
+    '8':{class_type:'KSamplerSelect',inputs:{sampler_name:'euler'}},
+    // Step 9: Random noise seed
+    '9':{class_type:'RandomNoise',inputs:{noise_seed:seed}},
+    // Step 10: CFG guider — cfg=3 is the sweet spot for LTX-Video 2b
+    '10':{class_type:'CFGGuider',inputs:{model:['6',0],positive:['4',0],negative:['4',1],cfg:3.0}},
+    // Step 11: Run diffusion — denoised_output[1] is the final clean result
+    '11':{class_type:'SamplerCustomAdvanced',inputs:{noise:['9',0],guider:['10',0],sampler:['8',0],sigmas:['7',0],latent_image:['5',0]}},
+    // Step 12: Decode latent → image frame batch
+    '12':{class_type:'VAEDecode',inputs:{vae:['1',2],samples:['11',1]}},
+    // Step 13: Combine frames → H.264 MP4 (uses ffmpeg via VHS)
+    '13':{class_type:'VHS_VideoCombine',inputs:{images:['12',0],frame_rate:24,loop_count:0,
+      filename_prefix:'EdgeVideo_tr',format:'video/h264-mp4',pingpong:false,save_output:true,
+      pix_fmt:'yuv420p',crf:19,save_metadata:true,trim_to_audio:false}}
+  };
+  if(startFrame){
+    // I2V conditioning: LoadImage → ImageScale (match output dims) → VAEEncode → guiding_latent
+    // Node IDs 14/15/16 are safe — not used by base workflow
+    base['14']={class_type:'LoadImage',inputs:{image:startFrame,upload:'image'}};
+    base['16']={class_type:'ImageScale',inputs:{image:['14',0],width,height,upscale_method:'lanczos',crop:'center'}};
+    base['15']={class_type:'VAEEncode',inputs:{pixels:['16',0],vae:['1',2]}};
+    // Wire guiding_latent into LTXVConditioning so the model anchors to this frame
+    base['4'].inputs.guiding_latent=['15',0];
+  }
+  return base;
+}
+async function comfySubmit(workflow,onProgress){
+  const sub=await fetch(`${COMFY_URL}/prompt`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({prompt:workflow,client_id:'edgevideo'})});
+  if(!sub.ok)throw new Error(`ComfyUI submit failed: ${sub.status}`);
+  const {prompt_id}=await sub.json();
+  onProgress?.('Queued — waiting for ComfyUI...');
+  const filename=await new Promise((resolve,reject)=>{
+    const iv=setInterval(async()=>{
+      try{
+        const h=await fetch(`${COMFY_URL}/history/${prompt_id}`);
+        const data=await h.json();
+        const job=data[prompt_id];
+        if(!job)return;
+        if(job.status?.status_str==='error'){clearInterval(iv);reject(new Error('ComfyUI job errored'));return;}
+        if(job.status?.status_str==='success'||job.outputs){
+          const out=job.outputs?.['13']?.videos||job.outputs?.['13']?.gifs||job.outputs?.['6']?.videos||job.outputs?.['6']?.gifs;
+          if(out?.[0]?.filename){clearInterval(iv);resolve(out[0].filename);}
+          else{
+            // fallback scan
+            for(const k of Object.keys(job.outputs||{})){
+              const v=job.outputs[k].videos||job.outputs[k].gifs;
+              if(v?.[0]?.filename){clearInterval(iv);resolve(v[0].filename);return;}
+            }
+          }
+        }
+        const q=job.status?.messages;if(q)onProgress?.(`Running…`);
+      }catch(_){}
+    },1500);
+    setTimeout(()=>{clearInterval(iv);reject(new Error('ComfyUI timed out (3 min)'));},180000);
+  });
+  const view=await fetch(`${COMFY_URL}/view?filename=${encodeURIComponent(filename)}&type=output`);
+  if(!view.ok)throw new Error(`ComfyUI /view failed: ${view.status}`);
+  return URL.createObjectURL(await view.blob());
+}
+
+// ── Upload a JPEG frame to ComfyUI /upload/image, return server filename ──────
+async function uploadFrameToComfy(base64Jpeg){
+  const bin=atob(base64Jpeg);
+  const buf=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)buf[i]=bin.charCodeAt(i);
+  const blob=new Blob([buf],{type:'image/jpeg'});
+  const form=new FormData();
+  form.append('image',blob,`ev_frame_${Date.now()}.jpg`);
+  form.append('type','input');form.append('overwrite','true');
+  const r=await fetch(`${COMFY_URL}/upload/image`,{method:'POST',body:form});
+  if(!r.ok)throw new Error(`ComfyUI upload failed: ${r.status}`);
+  const {name}=await r.json();
+  return name; // e.g. "ev_frame_1234567890.jpg"
+}
+
+// ── ClipCard ──────────────────────────────────────────────────────────────────
+function ClipCard({clip,active,onSelect,onAnalyze,onRemove}){
+  const C=useTheme();
+  const vidRef=useRef(null);
+  const [thumbData,setThumbData]=useState(clip.thumbnail);
+
+  useEffect(()=>{
+    if(thumbData||!vidRef.current)return;
+    const vid=vidRef.current;
+    const onMeta=async()=>{
+      try{const b64=await extractFrameAsBase64(vid,vid.duration*0.1);setThumbData('data:image/jpeg;base64,'+b64);}catch(_){}
+    };
+    if(vid.readyState>=1)onMeta();else vid.addEventListener('loadedmetadata',onMeta,{once:true});
+  },[]);
+
+  return(
+    <div onClick={onSelect} style={{cursor:'pointer',borderRadius:8,overflow:'hidden',
+      border:`2px solid ${active?C.accent:C.border}`,background:C.panel,
+      transition:'border-color 0.15s',animation:'fadeIn 0.2s ease'}}>
+      {/* Hidden video for frame extraction */}
+      <video ref={vidRef} id={'ev-vid-'+clip.id} src={clip.url} preload="metadata" muted
+        style={{display:'none'}} onLoadedMetadata={e=>{/* duration set in parent via handler */}}/>
+      {/* Thumbnail */}
+      <div style={{aspectRatio:'16/9',background:'#030810',position:'relative',overflow:'hidden'}}>
+        {thumbData
+          ?<img src={thumbData} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+          :<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <Film size={22} color={C.textDim}/>
+          </div>}
+        {clip.analyzing&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+          <Loader size={14} color={C.accent} style={{animation:'spin 1s linear infinite'}}/>
+          <span style={{fontSize:9,fontFamily:C.mono,color:C.accent}}>ANALYZING</span>
+        </div>}
+        {clip.duration>0&&<div style={{position:'absolute',bottom:4,right:6,background:'rgba(0,0,0,0.7)',borderRadius:3,padding:'1px 6px',fontSize:9,fontFamily:C.mono,color:'#fff'}}>{fmtTime(clip.duration)}</div>}
+        {clip.analysis&&<div style={{position:'absolute',top:4,left:4}}><Tag color={C.green} bg={C.greenBg}>AI</Tag></div>}
+      </div>
+      {/* Info bar */}
+      <div style={{padding:'8px 10px',display:'flex',alignItems:'center',gap:8}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:11,color:C.textHi,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clip.analysis?.suggested_label||clip.name}</div>
+          <div style={{fontSize:9,fontFamily:C.mono,color:clip.analysisError?C.red:C.textDim,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}
+            title={clip.analysisError||undefined}>
+            {clip.analysis?.mood||clip.analysis?.setting||clip.analysis?.subject
+              ||(clip.analysisError?'Analysis failed — hover for detail':'Not yet analyzed')}
+          </div>
+        </div>
+        <button onClick={e=>{e.stopPropagation();onAnalyze();}} disabled={clip.analyzing}
+          title="Analyze with Gemma 4 vision"
+          style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:4,padding:'4px 7px',cursor:'pointer',color:C.accent,display:'flex',alignItems:'center',gap:4,fontSize:9,fontFamily:C.mono,opacity:clip.analyzing?0.4:1}}>
+          <Eye size={11}/>{clip.analyzing?'...':'AI'}
+        </button>
+        <button onClick={e=>{e.stopPropagation();onRemove();}}
+          style={{background:'transparent',border:'none',cursor:'pointer',color:C.textDim,padding:3}}>
+          <Trash2 size={12}/>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── ModLibrary ────────────────────────────────────────────────────────────────
+function ModLibrary({clips,onLoadFiles,onAnalyzeClip,onRemoveClip,activeClipId,setActiveClipId,setMod,gwfPath,serveOnline}){
+  const C=useTheme();const secT=mkSecT(C),card=mkCard(C);
+  const fileRef=useRef(null);
+  const [uploading,setUploading]=useState(false);
+  const [uploadPct,setUploadPct]=useState(0);
+
+  const onDrop=useCallback(e=>{e.preventDefault();onLoadFiles(e.dataTransfer.files);},[onLoadFiles]);
+
+  return(
+    <div style={{animation:'fadeIn 0.2s ease'}}>
+      {/* Header row with server status */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+        <span style={secT}>VIDEO LIBRARY — LOAD UP TO 6 CLIPS</span>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <div style={{width:7,height:7,borderRadius:'50%',background:serveOnline?C.green:C.amber,flexShrink:0}}/>
+          <span style={{fontSize:9,fontFamily:C.mono,color:serveOnline?C.green:C.amber}}>
+            {serveOnline?'GWF ACTIVE — files saved to library':'LOCAL MODE — files in memory only'}
+          </span>
+        </div>
+      </div>
+      {/* Drop zone */}
+      {clips.length<6&&<div onDrop={onDrop} onDragOver={e=>e.preventDefault()}
+        style={{...card,border:`2px dashed ${uploading?C.accent:C.border}`,background:uploading?C.accentBg:'transparent',marginBottom:16,
+          minHeight:100,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10,cursor:'pointer',transition:'all 0.15s'}}
+        onClick={()=>!uploading&&fileRef.current?.click()}>
+        <input ref={fileRef} type="file" accept="video/*" multiple style={{display:'none'}} onChange={e=>onLoadFiles(e.target.files)}/>
+        {uploading?(
+          <>
+            <Loader size={24} color={C.accent} style={{animation:'spin 1s linear infinite'}}/>
+            <div style={{textAlign:'center'}}>
+              <div style={{fontSize:12,color:C.accent,marginBottom:3}}>Copying to library…  {uploadPct}%</div>
+              <div style={{fontSize:10,fontFamily:C.mono,color:C.textDim}}>Saving to global workfolder</div>
+            </div>
+          </>
+        ):(
+          <>
+            <FolderOpen size={28} color={C.textDim}/>
+            <div style={{textAlign:'center'}}>
+              <div style={{fontSize:12,color:C.textHi,marginBottom:3}}>Drop video files here or click to browse</div>
+              <div style={{fontSize:10,fontFamily:C.mono,color:C.textDim}}>MP4  MOV  WEBM  MKV  {clips.length}/6 loaded</div>
+              {serveOnline&&<div style={{fontSize:9,fontFamily:C.mono,color:C.green,marginTop:3}}>Files will be saved to: {gwfPath||'library folder'}</div>}
+            </div>
+          </>
+        )}
+      </div>}
+      {/* Clip grid */}
+      {clips.length>0&&<>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:14}}>
+          {clips.map(clip=>(
+            <ClipCard key={clip.id} clip={clip} active={clip.id===activeClipId}
+              onSelect={()=>setActiveClipId(clip.id)}
+              onAnalyze={()=>onAnalyzeClip(clip.id)}
+              onRemove={()=>onRemoveClip(clip)}/>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:10,alignItems:'center'}}>
+          <Btn onClick={()=>setMod('snippets')} disabled={!activeClipId}>
+            <Scissors size={13}/>SELECT SNIPPETS FROM ACTIVE CLIP
+          </Btn>
+          <span style={{fontSize:10,fontFamily:C.mono,color:C.textDim}}>
+            {activeClipId?`Active: ${clips.find(c=>c.id===activeClipId)?.name||''}  — click a clip to select it`:'Click a clip to make it active'}
+          </span>
+        </div>
+      </>}
+      {clips.length===0&&<div style={{...card,textAlign:'center',padding:40}}>
+        <Video size={36} color={C.textDim} style={{margin:'0 auto 12px'}}/>
+        <div style={{fontSize:13,color:C.textHi,marginBottom:6}}>No clips loaded</div>
+        <div style={{fontSize:11,color:C.textDim}}>
+          {serveOnline
+            ?'Drop or browse for video files — they will be copied to your persistent library'
+            :'Load 5-6 video clips to begin (start serve.ps1 to enable persistent library)'}
+        </div>
+      </div>}
+    </div>
+  );
+}
+
+// ── SnippetEditor ─────────────────────────────────────────────────────────────
+function SnippetEditor({clip,snippets,setSnippets}){
+  const C=useTheme();const inp=mkInp(C);
+  const vidRef=useRef(null);
+  const [duration,setDuration]=useState(0);
+  const [currentTime,setCurrentTime]=useState(0);
+  const [inPt,setInPt]=useState(0);
+  const [outPt,setOutPt]=useState(30);
+  const [playing,setPlaying]=useState(false);
+  const [label,setLabel]=useState('');
+
+  useEffect(()=>{
+    const vid=vidRef.current;if(!vid)return;
+    vid.src=clip.url;
+    const onMeta=()=>{const d=vid.duration;setDuration(d);setInPt(0);setOutPt(Math.min(30,d));};
+    const onTime=()=>setCurrentTime(vid.currentTime);
+    vid.addEventListener('loadedmetadata',onMeta);
+    vid.addEventListener('timeupdate',onTime);
+    if(vid.readyState>=1)onMeta();
+    return()=>{vid.removeEventListener('loadedmetadata',onMeta);vid.removeEventListener('timeupdate',onTime);};
+  },[clip.url]);
+
+  // Loop playback within in/out window
+  useEffect(()=>{
+    const vid=vidRef.current;if(!vid)return;
+    const check=()=>{if(vid.currentTime>outPt)vid.currentTime=inPt;};
+    vid.addEventListener('timeupdate',check);
+    return()=>vid.removeEventListener('timeupdate',check);
+  },[inPt,outPt]);
+
+  const seekTo=t=>{if(vidRef.current)vidRef.current.currentTime=t;};
+
+  const updateIn=v=>{const n=parseFloat(v);setInPt(n);if(outPt-n>30)setOutPt(Math.min(n+30,duration));seekTo(n);};
+  const updateOut=v=>{const n=parseFloat(v);setOutPt(n);if(n-inPt>30)setInPt(Math.max(0,n-30));seekTo(n);};
+
+  const addSnippet=useCallback(async()=>{
+    if(snippets.length>=10)return;
+    const vid=vidRef.current;
+    let thumb='';
+    try{const b64=await extractFrameAsBase64(vid,inPt);thumb='data:image/jpeg;base64,'+b64;}catch(_){}
+    setSnippets(prev=>[...prev,{
+      id:uid(),clipId:clip.id,clipName:clip.analysis?.suggested_label||clip.name,
+      inPoint:inPt,outPoint:outPt,label:label||(clip.analysis?.suggested_label||clip.name),thumbnail:thumb
+    }]);
+    setLabel('');
+  },[clip,inPt,outPt,label,snippets.length,setSnippets]);
+
+  const selDur=+(outPt-inPt).toFixed(2);
+  const card=mkCard(C);
+  return(
+    <div>
+      {/* Video player */}
+      <div style={{aspectRatio:'16/9',background:'#030810',borderRadius:8,overflow:'hidden',marginBottom:10,position:'relative'}}>
+        <video ref={vidRef} style={{width:'100%',height:'100%',objectFit:'contain'}}
+          onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)}/>
+        {/* Caption overlays — shows any snippet caption whose window includes currentTime */}
+        {duration>0&&snippets
+          .filter(s=>s.clipId===clip.id&&s.caption?.enabled&&s.caption?.text)
+          .map(s=>{
+            const cap=s.caption;
+            const absStart=s.inPoint+(cap.startTime??2);
+            const absEnd=absStart+(cap.duration??3);
+            if(currentTime<absStart||currentTime>absEnd)return null;
+            return(
+              <div key={s.id} style={{position:'absolute',bottom:'10%',left:0,right:0,
+                display:'flex',justifyContent:'center',pointerEvents:'none'}}>
+                <span style={{
+                  fontSize:cap.fontSize??32,color:'#fff',fontWeight:700,
+                  fontFamily:'Arial,Helvetica,sans-serif',textAlign:'center',
+                  textShadow:'0 2px 10px rgba(0,0,0,0.95),0 0 20px rgba(0,0,0,0.7)',
+                  background:'rgba(0,0,0,0.45)',padding:'3px 16px',borderRadius:5,
+                  maxWidth:'85%',wordBreak:'break-word',lineHeight:1.25,
+                  display:'inline-block'}}>
+                  {cap.text}
+                </span>
+              </div>
+            );
+          })
+        }
+        {/* In/out markers overlaid */}
+        {duration>0&&<>
+          <div style={{position:'absolute',bottom:0,left:0,right:0,height:4,background:'rgba(0,0,0,0.4)'}}>
+            <div style={{position:'absolute',left:`${inPt/duration*100}%`,width:`${(outPt-inPt)/duration*100}%`,height:'100%',background:`${C.accent}88`}}/>
+            <div style={{position:'absolute',left:`${currentTime/duration*100}%`,width:2,height:'100%',background:C.accent}}/>
+          </div>
+        </>}
+      </div>
+      {/* Controls */}
+      <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:12}}>
+        <button style={{background:C.accentBg,border:`1px solid ${C.accent}44`,borderRadius:4,padding:'5px 10px',cursor:'pointer',color:C.accent,display:'flex',alignItems:'center',gap:5}}
+          onClick={()=>{const v=vidRef.current;if(!v)return;v.currentTime=inPt;playing?v.pause():v.play();}}>
+          {playing?<Pause size={12}/>:<Play size={12}/>}
+        </button>
+        <button style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:4,padding:'5px 8px',cursor:'pointer',color:C.textDim}}
+          onClick={()=>{const v=vidRef.current;if(!v)return;v.pause();v.currentTime=inPt;}}>
+          <Square size={11}/>
+        </button>
+        <div style={{flex:1,height:6,background:C.border,borderRadius:3,position:'relative',cursor:'pointer'}}
+          onClick={e=>{if(!duration)return;const r=e.currentTarget.getBoundingClientRect();seekTo((e.clientX-r.left)/r.width*duration);}}>
+          <div style={{position:'absolute',left:`${inPt/duration*100}%`,width:`${(outPt-inPt)/duration*100}%`,height:'100%',background:`${C.accent}55`,borderRadius:3}}/>
+          <div style={{position:'absolute',left:`${currentTime/duration*100}%`,width:2,height:'100%',background:C.accent,top:0}}/>
+        </div>
+        <span style={{fontSize:9,fontFamily:C.mono,color:C.textDim,whiteSpace:'nowrap'}}>{fmtTime(currentTime)} / {fmtTime(duration)}</span>
+      </div>
+      {/* In/out sliders */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+        <div>
+          <label style={mkLbl(C)}>IN POINT — {fmtTime(inPt)}</label>
+          <input type="range" min={0} max={duration} step={0.1} value={inPt}
+            onChange={e=>updateIn(e.target.value)}
+            style={{width:'100%',accentColor:C.green,background:`linear-gradient(to right,${C.green} ${inPt/duration*100}%,${C.border} ${inPt/duration*100}%)`}}/>
+        </div>
+        <div>
+          <label style={mkLbl(C)}>OUT POINT — {fmtTime(outPt)}</label>
+          <input type="range" min={0} max={duration} step={0.1} value={outPt}
+            onChange={e=>updateOut(e.target.value)}
+            style={{width:'100%',accentColor:C.red,background:`linear-gradient(to right,${C.red} ${outPt/duration*100}%,${C.border} ${outPt/duration*100}%)`}}/>
+        </div>
+      </div>
+      {/* Snippet label + add */}
+      <div style={{display:'flex',gap:10,alignItems:'center'}}>
+        <input value={label} onChange={e=>setLabel(e.target.value)} placeholder="Snippet label (optional)..."
+          style={{...inp,flex:1,fontSize:11}}/>
+        <div style={{...card,padding:'6px 14px',background:selDur>30?C.redBg:C.accentBg,
+          border:`1px solid ${selDur>30?C.red:C.accent}44`,borderRadius:5,minWidth:90,textAlign:'center'}}>
+          <div style={{fontSize:13,fontFamily:C.mono,color:selDur>30?C.red:C.accent,fontWeight:700}}>{selDur.toFixed(1)}s</div>
+          <div style={{fontSize:8,fontFamily:C.mono,color:C.textDim}}>MAX 30s</div>
+        </div>
+        <Btn onClick={addSnippet} disabled={selDur>30||selDur<1||snippets.length>=10}>
+          <Plus size={13}/>ADD SNIPPET
+        </Btn>
+      </div>
+      {snippets.length>=10&&<div style={{fontSize:10,color:C.amber,fontFamily:C.mono,marginTop:8}}>Maximum 10 snippets reached — remove one to add more.</div>}
+    </div>
+  );
+}
+
+// ── CaptionEditor ─────────────────────────────────────────────────────────────
+const DEFAULT_CAPTION={enabled:false,text:'',startTime:2,duration:3,fontSize:32};
+function CaptionEditor({sn,setSnippets}){
+  const C=useTheme();const inp=mkInp(C);
+  const snDur=+(sn.outPoint-sn.inPoint).toFixed(2);
+  const cap={...DEFAULT_CAPTION,...(sn.caption||{})};
+  const update=patch=>setSnippets(prev=>prev.map(s=>s.id===sn.id?{...s,caption:{...cap,...patch}}:s));
+  const maxStart=Math.max(0,snDur-1);
+  return(
+    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginTop:8}}>
+      {/* Header row */}
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:cap.enabled?10:0}}>
+        <Type size={10} color={cap.enabled?C.accent:C.textDim}/>
+        <span style={{fontSize:9,fontFamily:C.mono,color:cap.enabled?C.accent:C.textDim,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+          {cap.enabled&&cap.text?`"${cap.text.slice(0,22)}${cap.text.length>22?'…':''}"  @${cap.startTime.toFixed(1)}s  ${cap.duration}s  ${cap.fontSize}px`:'CAPTION'}
+        </span>
+        <button onClick={()=>update({enabled:!cap.enabled})}
+          style={{background:cap.enabled?C.accentBg:'transparent',border:`1px solid ${cap.enabled?C.accent:C.border}`,
+            borderRadius:3,padding:'3px 9px',cursor:'pointer',fontSize:8,fontFamily:C.mono,
+            color:cap.enabled?C.accent:C.textDim,flexShrink:0}}>
+          {cap.enabled?'ON':'OFF'}
+        </button>
+      </div>
+      {cap.enabled&&(
+        <div style={{display:'flex',flexDirection:'column',gap:9}}>
+          {/* Text */}
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+              <label style={mkLbl(C)}>CAPTION TEXT</label>
+              <span style={{fontSize:8,fontFamily:C.mono,color:cap.text.length>=25?C.red:C.textDim}}>{cap.text.length}/25</span>
+            </div>
+            <input value={cap.text} maxLength={25} onChange={e=>update({text:e.target.value})}
+              placeholder="Enter caption (max 25 chars)..."
+              style={{...inp,fontSize:11,width:'100%',boxSizing:'border-box'}}/>
+          </div>
+          {/* Three sliders */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+            <div>
+              <label style={mkLbl(C)}>START  {cap.startTime.toFixed(1)}s</label>
+              <input type="range" min={0} max={maxStart} step={0.5}
+                value={Math.min(cap.startTime,maxStart)}
+                onChange={e=>update({startTime:+e.target.value})}
+                style={{width:'100%',accentColor:C.accent}}/>
+              <div style={{fontSize:8,fontFamily:C.mono,color:C.textDim,marginTop:2}}>0 – {maxStart.toFixed(1)}s</div>
+            </div>
+            <div>
+              <label style={mkLbl(C)}>SHOW FOR  {cap.duration}s</label>
+              <input type="range" min={1} max={10} step={1} value={cap.duration}
+                onChange={e=>update({duration:+e.target.value})}
+                style={{width:'100%',accentColor:C.accent}}/>
+              <div style={{fontSize:8,fontFamily:C.mono,color:C.textDim,marginTop:2}}>1 – 10s</div>
+            </div>
+            <div>
+              <label style={mkLbl(C)}>FONT SIZE  {cap.fontSize}px</label>
+              <input type="range" min={16} max={72} step={2} value={cap.fontSize}
+                onChange={e=>update({fontSize:+e.target.value})}
+                style={{width:'100%',accentColor:C.accent}}/>
+              <div style={{fontSize:8,fontFamily:C.mono,color:C.textDim,marginTop:2}}>16 – 72px</div>
+            </div>
+          </div>
+          {/* Hint */}
+          <div style={{fontSize:8,fontFamily:C.mono,color:C.textDim,lineHeight:1.5}}>
+            Caption appears at <strong style={{color:C.accent}}>{cap.startTime.toFixed(1)}s</strong> into snippet
+            for <strong style={{color:C.accent}}>{cap.duration}s</strong>.
+            Play the video above to preview.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ModSnippets ───────────────────────────────────────────────────────────────
+function ModSnippets({clips,activeClipId,setActiveClipId,snippets,setSnippets,setMod}){
+  const C=useTheme();const secT=mkSecT(C),card=mkCard(C),inp=mkInp(C);
+  const clip=clips.find(c=>c.id===activeClipId);
+  const totalSnipDur=snippets.reduce((s,sn)=>s+(sn.outPoint-sn.inPoint),0);
+  return(
+    <div style={{display:'grid',gridTemplateColumns:'3fr 2fr',gap:16,animation:'fadeIn 0.2s ease'}}>
+      <div>
+        <span style={secT}>SNIPPET SELECTOR  MARK IN/OUT POINTS  MAX 30s PER SNIPPET</span>
+        {clip
+          ?<SnippetEditor clip={clip} snippets={snippets} setSnippets={setSnippets}/>
+          :<div style={{...card,textAlign:'center',padding:40}}>
+            <Scissors size={32} color={C.textDim} style={{margin:'0 auto 12px'}}/>
+            <div style={{fontSize:12,color:C.textHi,marginBottom:6}}>No clip selected</div>
+            <div style={{fontSize:11,color:C.textDim,marginBottom:16}}>Go to Library and click a clip to select it</div>
+            <Btn color="sec" onClick={()=>setMod('library')}><Film size={12}/>OPEN LIBRARY</Btn>
+          </div>}
+        {/* Clip selector strip */}
+        {clips.length>1&&<div style={{marginTop:14}}>
+          <span style={secT}>SWITCH CLIP</span>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            {clips.map(c=><button key={c.id} onClick={()=>setActiveClipId(c.id)}
+              style={{background:c.id===activeClipId?C.accentBg:'transparent',border:`1px solid ${c.id===activeClipId?C.accent:C.border}`,borderRadius:4,padding:'4px 10px',cursor:'pointer',fontSize:10,fontFamily:C.mono,color:c.id===activeClipId?C.accent:C.textDim}}>
+              {c.analysis?.suggested_label||c.name}
+            </button>)}
+          </div>
+        </div>}
+      </div>
+      {/* Snippet list */}
+      <div>
+        <span style={secT}>SNIPPETS  {snippets.length}/10  {fmtTime(totalSnipDur)} total</span>
+        {snippets.length===0&&<div style={{...card,textAlign:'center',padding:24,color:C.textDim,fontSize:11}}>No snippets yet — set in/out points and click ADD SNIPPET</div>}
+        <div style={{display:'flex',flexDirection:'column',gap:7}}>
+          {snippets.map((sn,i)=>{
+            const hasCap=sn.caption?.enabled&&sn.caption?.text;
+            return(
+            <div key={sn.id} style={{...card,padding:'8px 10px'}}>
+              {/* Main row */}
+              <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                {sn.thumbnail&&<img src={sn.thumbnail} style={{width:64,height:36,objectFit:'cover',borderRadius:4,flexShrink:0}}/>}
+                <div style={{flex:1,minWidth:0}}>
+                  <input value={sn.label} onChange={e=>setSnippets(prev=>prev.map(s=>s.id===sn.id?{...s,label:e.target.value}:s))}
+                    style={{...inp,padding:'3px 7px',fontSize:10,marginBottom:3}}/>
+                  <div style={{fontSize:9,fontFamily:C.mono,color:C.textDim}}>
+                    {sn.clipName}  {fmtTime(sn.inPoint)}-{fmtTime(sn.outPoint)}  {(sn.outPoint-sn.inPoint).toFixed(1)}s
+                  </div>
+                </div>
+                {/* Caption badge */}
+                {hasCap&&<div style={{background:C.accentBg,border:`1px solid ${C.accent}55`,borderRadius:3,
+                  padding:'2px 6px',fontSize:8,fontFamily:C.mono,color:C.accent,flexShrink:0,whiteSpace:'nowrap'}}>
+                  CC
+                </div>}
+                <button onClick={()=>setSnippets(prev=>prev.filter(s=>s.id!==sn.id))}
+                  style={{background:'transparent',border:'none',cursor:'pointer',color:C.textDim,padding:3,flexShrink:0}}>
+                  <X size={12}/>
+                </button>
+              </div>
+              {/* Inline caption editor — always shown, expand/collapse managed inside */}
+              <CaptionEditor sn={sn} setSnippets={setSnippets}/>
+            </div>
+            );
+          })}
+        </div>
+        {snippets.length>0&&<div style={{marginTop:12,display:'flex',gap:10}}>
+          <Btn onClick={()=>setMod('timeline')} style={{flex:1,justifyContent:'center'}}>
+            <Layers size={13}/>BUILD TIMELINE
+          </Btn>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+// ── ModTimeline ───────────────────────────────────────────────────────────────
+function ModTimeline({snippets,timeline,setTimeline,setMod}){
+  const C=useTheme();const secT=mkSecT(C),card=mkCard(C),inp=mkInp(C);
+  const totalDur=timeline.reduce((s,t)=>{
+    const sn=snippets.find(x=>x.id===t.snippetId);
+    const snDur=sn?(sn.outPoint-sn.inPoint):0;
+    const trDur=t.transition.type==='ltx-video'?(t.transition.frames||49)/24:t.transition.type==='fade'?1:0;
+    return s+snDur+trDur;
+  },0);
+  const targetDur=300,durColor=Math.abs(totalDur-targetDur)<30?C.green:totalDur>330?C.amber:C.textDim;
+  const moveUp=i=>{if(i===0)return;setTimeline(prev=>{const a=[...prev];[a[i-1],a[i]]=[a[i],a[i-1]];return a;});};
+  const moveDown=i=>{if(i===timeline.length-1)return;setTimeline(prev=>{const a=[...prev];[a[i],a[i+1]]=[a[i+1],a[i]];return a;});};
+  const setTransType=(id,type)=>setTimeline(prev=>prev.map(t=>t.id===id?{...t,transition:{...t.transition,type}}:t));
+  const setTransPrompt=(id,p)=>setTimeline(prev=>prev.map(t=>t.id===id?{...t,transition:{...t.transition,prompt:p}}:t));
+
+  return(
+    <div style={{animation:'fadeIn 0.2s ease'}}>
+      <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:16}}>
+        <span style={secT}>COMPILATION TIMELINE</span>
+        <div style={{marginLeft:'auto',display:'flex',gap:12,alignItems:'center'}}>
+          <div style={{fontFamily:C.mono,fontSize:12,color:durColor}}>
+            {fmtTime(totalDur)} <span style={{color:C.textDim,fontSize:9}}>/ target {fmtTime(targetDur)}</span>
+          </div>
+          <Tag color={durColor}>{timeline.length} CLIPS</Tag>
+        </div>
+      </div>
+      {timeline.length===0&&<div style={{...card,textAlign:'center',padding:40}}>
+        <Layers size={32} color={C.textDim} style={{margin:'0 auto 12px'}}/>
+        <div style={{fontSize:12,color:C.textHi,marginBottom:6}}>Timeline is empty</div>
+        <div style={{fontSize:11,color:C.textDim,marginBottom:16}}>Add snippets first, then come back here to arrange them</div>
+        <Btn color="sec" onClick={()=>setMod('snippets')}><Scissors size={12}/>BACK TO SNIPPETS</Btn>
+      </div>}
+      <div style={{display:'flex',flexDirection:'column',gap:2}}>
+        {timeline.map((item,i)=>{
+          const sn=snippets.find(x=>x.id===item.snippetId);
+          if(!sn)return null;
+          const snDur=sn.outPoint-sn.inPoint;
+          return(
+            <React.Fragment key={item.id}>
+              {/* Snippet row */}
+              <div style={{...card,padding:'10px 12px',display:'flex',gap:10,alignItems:'center'}}>
+                <div style={{fontFamily:C.mono,fontSize:10,color:C.textDim,width:24,textAlign:'center',flexShrink:0}}>
+                  {String(i+1).padStart(2,'0')}
+                </div>
+                {sn.thumbnail&&<img src={sn.thumbnail} style={{width:80,height:45,objectFit:'cover',borderRadius:4,flexShrink:0}}/>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,color:C.textHi,marginBottom:2}}>{sn.label}</div>
+                  <div style={{fontSize:9,fontFamily:C.mono,color:C.textDim}}>{sn.clipName}  {fmtTime(sn.inPoint)}-{fmtTime(sn.outPoint)}</div>
+                </div>
+                <Tag color={C.blue} bg={C.blueBg}>{snDur.toFixed(1)}s</Tag>
+                <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                  <button onClick={()=>moveUp(i)} disabled={i===0} style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:3,padding:'2px 5px',cursor:i===0?'not-allowed':'pointer',color:C.textDim,opacity:i===0?0.3:1}}><ChevronUp size={10}/></button>
+                  <button onClick={()=>moveDown(i)} disabled={i===timeline.length-1} style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:3,padding:'2px 5px',cursor:i===timeline.length-1?'not-allowed':'pointer',color:C.textDim,opacity:i===timeline.length-1?0.3:1}}><ChevronDown size={10}/></button>
+                </div>
+                <button onClick={()=>setTimeline(prev=>prev.filter(t=>t.id!==item.id))} style={{background:'transparent',border:'none',cursor:'pointer',color:C.textDim,padding:3}}>
+                  <X size={12}/>
+                </button>
+              </div>
+              {/* Transition slot (not after last item) */}
+              {i<timeline.length-1&&<div style={{display:'flex',alignItems:'center',gap:10,padding:'4px 12px',background:`${C.surface}99`,borderLeft:`2px solid ${item.transition.type==='ltx-video'?C.accent:item.transition.type==='fade'?C.blue:C.border}`}}>
+                <Crosshair size={10} color={item.transition.type==='ltx-video'?C.accent:C.textDim}/>
+                <span style={{fontSize:9,fontFamily:C.mono,color:C.textDim,width:80}}>TRANSITION</span>
+                <div style={{display:'flex',gap:6}}>
+                  {[['cut','CUT'],['fade','FADE'],['ltx-video','AI GEN']].map(([id,lb])=>(
+                    <button key={id} onClick={()=>setTransType(item.id,id)}
+                      style={{background:item.transition.type===id?(id==='ltx-video'?C.accentBg:C.blueBg):'transparent',border:`1px solid ${item.transition.type===id?(id==='ltx-video'?C.accent:C.blue):C.border}`,borderRadius:3,padding:'2px 8px',cursor:'pointer',fontSize:9,fontFamily:C.mono,color:item.transition.type===id?(id==='ltx-video'?C.accent:C.blue):C.textDim}}>
+                      {lb}
+                    </button>
+                  ))}
+                </div>
+                {item.transition.type==='ltx-video'&&<input value={item.transition.prompt}
+                  onChange={e=>setTransPrompt(item.id,e.target.value)}
+                  placeholder="Describe transition (leave blank for auto)..."
+                  style={{...inp,flex:1,padding:'3px 8px',fontSize:10}}/>}
+                {item.transition.videoUrl&&<Tag color={C.green} bg={C.greenBg}>GENERATED</Tag>}
+                {item.transition.generating&&<Loader size={11} color={C.accent} style={{animation:'spin 1s linear infinite'}}/>}
+              </div>}
+            </React.Fragment>
+          );
+        })}
+      </div>
+      {timeline.length>0&&<div style={{display:'flex',gap:10,marginTop:16}}>
+        <Btn onClick={()=>setMod('effects')}><Wand size={13}/>GENERATE AI TRANSITIONS</Btn>
+        <Btn onClick={()=>setMod('export')} color="sec"><Download size={13}/>BUILD EXPORT COMMAND</Btn>
+      </div>}
+    </div>
+  );
+}
+
+const TRANSITION_PRESETS=[
+  'Smooth cinematic dissolve with warm golden light flare',
+  'Whip pan camera snap left with heavy motion blur',
+  'Fade through black — slow, dramatic pause between scenes',
+  'Glitch digital distortion wipe, cyberpunk neon style',
+  'Zoom burst into bright white overexposure, zoom out on next scene',
+  'Horizontal light streak wipe with anamorphic lens flare',
+  'Film burn and flicker, vintage super-8 projector effect',
+  'Water ripple distortion radiating from centre, dreamy and fluid',
+  'Aerial pull-back to sky, then push-in dive to next scene',
+  'Chromatic aberration smear and colour bleed RGB split',
+];
+// ── RestartComfyBtn ───────────────────────────────────────────────────────────
+// Posts to serve.ps1's /api/restart-comfyui endpoint, then polls until ComfyUI responds
+function RestartComfyBtn({setComfyOk}){
+  const C=useTheme();
+  const [state,setState]=useState('idle'); // idle | restarting | waiting | done | error
+  const [msg,setMsg]=useState('');
+
+  const restart=async()=>{
+    setState('restarting');setMsg('Sending restart command...');
+    try{
+      const r=await fetch('http://localhost:8765/api/restart-comfyui',{method:'POST',body:''});
+      const d=await r.json();
+      if(!d.ok)throw new Error(d.message||'restart failed');
+      setState('waiting');setMsg('Waiting for ComfyUI to come back online...');
+      setComfyOk(null); // show amber "checking" dot
+      // Poll /health until ComfyUI responds (up to 90s)
+      const started=Date.now();
+      const poll=setInterval(async()=>{
+        try{
+          const h=await fetch(`${COMFY_URL}/queue`,{signal:AbortSignal.timeout(2000)});
+          if(h.ok){
+            clearInterval(poll);
+            setComfyOk(true);
+            setState('done');setMsg('ComfyUI is back online');
+            setTimeout(()=>{setState('idle');setMsg('');},3000);
+          }
+        }catch(_){}
+        if(Date.now()-started>90000){
+          clearInterval(poll);
+          setState('error');setMsg('Timed out — ComfyUI did not respond within 90s');
+        }
+      },2000);
+    }catch(e){
+      setState('error');setMsg(e.message);
+    }
+  };
+
+  const busy=state==='restarting'||state==='waiting';
+  const color=state==='done'?C.green:state==='error'?C.red:C.amber;
+  const bg=state==='done'?C.greenBg:state==='error'?C.redBg:C.amberBg;
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start',flexShrink:0}}>
+      <button onClick={restart} disabled={busy}
+        title={busy?msg:'Restart ComfyUI service'}
+        style={{background:busy?bg:'transparent',border:`1px solid ${busy?color:C.border}`,
+          borderRadius:4,padding:'5px 10px',cursor:busy?'default':'pointer',
+          display:'flex',alignItems:'center',gap:6,opacity:busy?1:1,
+          transition:'all 0.15s',flexShrink:0}}>
+        {busy
+          ?<Loader size={11} color={color} style={{animation:'spin 1s linear infinite'}}/>
+          :<RefreshCw size={11} color={C.textDim}/>}
+        <span style={{fontSize:9,fontFamily:C.mono,
+          color:busy?color:C.textDim,whiteSpace:'nowrap'}}>
+          {state==='restarting'?'RESTARTING...':state==='waiting'?'WAITING...':state==='done'?'ONLINE':'RESTART COMFYUI'}
+        </span>
+      </button>
+      {msg&&state!=='idle'&&<div style={{fontSize:8,fontFamily:C.mono,color,maxWidth:220,lineHeight:1.5}}>{msg}</div>}
+    </div>
+  );
+}
+
+// ── ModEffects ────────────────────────────────────────────────────────────────
+function ModEffects({timeline,setTimeline,snippets,clips,comfyOk,setComfyOk,ollamaOk,onEnsureSession}){
+  const C=useTheme();const secT=mkSecT(C),card=mkCard(C),inp=mkInp(C);
+  const aiTransitions=timeline.filter(t=>t.transition.type==='ltx-video');
+  const [width,setWidth]=useState(512),[height,setHeight]=useState(288);
+  const [transFrames,setTransFrames]=useState(49);
+  const [genAll,setGenAll]=useState(false);
+  const FRAME_OPTS=[{f:25,label:'1s',fps:24},{f:33,label:'1.5s',fps:24},{f:49,label:'2s',fps:24},{f:73,label:'3s',fps:24}];
+
+  const generateOne=useCallback(async(itemId,prompt,autoPrompt)=>{
+    const setStatus=s=>setTimeline(prev=>prev.map(t=>t.id===itemId?{...t,transition:{...t.transition,status:s}}:t));
+    setTimeline(prev=>prev.map(t=>t.id===itemId?{...t,transition:{...t.transition,generating:true,status:'Preparing...'}}:t));
+    try{
+      // ── Find preceding clip to extract last frame for I2V conditioning ──────
+      const itemIdx=timeline.findIndex(t=>t.id===itemId);
+      const prevItem=itemIdx>0?timeline[itemIdx-1]:null;
+      const prevSn=prevItem?snippets.find(s=>s.id===prevItem.snippetId):null;
+      const prevClip=prevSn?clips.find(c=>c.id===prevSn.clipId):null;
+
+      // ── Build scene context from Gemma analysis for both adjacent clips ─────
+      const snA=prevSn;
+      const snB=snippets.find(s=>s.id===timeline[itemIdx+1]?.snippetId);
+      const clipA=snA?clips.find(c=>c.id===snA.clipId):null;
+      const clipB=snB?clips.find(c=>c.id===snB.clipId):null;
+      const aA=clipA?.analysis;const aB=clipB?.analysis;
+      // Compact scene description: "mood setting — subject action"
+      const sceneDesc=(a,sn)=>{
+        if(!a)return sn?.label||null;
+        const parts=[a.mood,a.setting,a.subject&&a.action?`${a.subject} ${a.action}`:a.subject||a.action].filter(Boolean);
+        return parts.join(', ');
+      };
+      const descA=sceneDesc(aA,snA);
+      const descB=sceneDesc(aB,snB);
+
+      // ── Derive final prompt ───────────────────────────────────────────────
+      let finalPrompt=null;
+
+      if(prompt){
+        // User typed or selected a prompt — augment it with scene context if analysis is available
+        if((descA||descB)&&ollamaOk){
+          try{
+            setStatus('Enriching prompt with scene context...');
+            const sys='You are a video editor refining LTX-Video transition prompts. Incorporate the scene context naturally into the effect description. Output one sentence only, max 35 words, no explanations.';
+            const usr=`Effect style: "${prompt}"\nOutgoing scene: ${descA||'unknown'}\nIncoming scene: ${descB||'unknown'}\nWrite a single transition prompt that combines this effect with the visual scene context.`;
+            const raw=await gemma4Call(sys,usr);
+            finalPrompt=raw.trim().replace(/^["']|["']$/g,'');
+          }catch(_){
+            // Gemma unavailable — append scene context as suffix instead
+            const suffix=[descA&&`from: ${descA}`,descB&&`to: ${descB}`].filter(Boolean).join('; ');
+            finalPrompt=suffix?`${prompt} — ${suffix}`:prompt;
+          }
+        }else{
+          finalPrompt=prompt; // no analysis yet, use preset as-is
+        }
+      }else if(ollamaOk){
+        // No user prompt — ask Gemma to generate one from scratch using scene context
+        try{
+          setStatus('Asking Gemma for transition prompt...');
+          const ctxA=aA?JSON.stringify({subject:aA.subject,action:aA.action,setting:aA.setting,mood:aA.mood,colors:aA.color_palette}):snA?.label||'unknown scene';
+          const ctxB=aB?JSON.stringify({subject:aB.subject,action:aB.action,setting:aB.setting,mood:aB.mood,colors:aB.color_palette}):snB?.label||'unknown scene';
+          const sys='You are a video editor writing LTX-Video transition prompts. Write concise, vivid, visual descriptions only — no explanations, no JSON, no bullet points. Single sentence, max 30 words.';
+          const usr=`Write a seamless visual transition prompt bridging these two scenes.\nScene A (outgoing): ${ctxA}\nScene B (incoming): ${ctxB}\nThe transition should feel motivated by Scene A and naturally arrive at Scene B.`;
+          const raw=await gemma4Call(sys,usr);
+          finalPrompt=raw.trim().replace(/^["']|["']$/g,'');
+        }catch(_){/* fall through */}
+      }
+      if(!finalPrompt)finalPrompt=autoPrompt;
+
+      // ── Extract last frame of preceding clip for image conditioning ───────
+      let startFrame=null;
+      if(prevClip?.url&&prevSn){
+        try{
+          setStatus('Extracting conditioning frame...');
+          // Seek to 0.5s before outPoint (clamped to inPoint) for the last meaningful frame
+          const seekT=Math.max(prevSn.inPoint,(prevSn.outPoint||prevClip.duration||0)-0.5);
+          const b64=await extractFrameFromUrl(prevClip.url,seekT,width);
+          setStatus('Uploading frame to ComfyUI...');
+          startFrame=await uploadFrameToComfy(b64);
+        }catch(e){
+          // Non-fatal — fall back to text-to-video if frame extraction fails
+          console.warn('EdgeVideo: frame conditioning skipped —',e.message);
+        }
+      }
+
+      const wf=buildLTXWorkflow(finalPrompt,width,height,transFrames,startFrame);
+      setStatus(startFrame?'Generating (I2V conditioned)...':'Submitting to ComfyUI...');
+      const url=await comfySubmit(wf,s=>setStatus(s));
+      // Auto-save transition blob to SWF (if server available)
+      let swfSaved=false;
+      if(onEnsureSession){
+        try{
+          setStatus('Saving transition to session...');
+          const {sid}=await onEnsureSession();
+          const blob=await fetch(url).then(r=>r.blob());
+          const fname=`transition_${itemId.slice(0,6)}.mp4`;
+          await fetch(`${SERVE_URL}/api/session/${sid}/save-asset`,{
+            method:'POST',
+            headers:{'X-Filename':fname,'Content-Type':'application/octet-stream'},
+            body:blob
+          });
+          swfSaved=true;
+        }catch(e2){console.warn('EdgeVideo: transition SWF save skipped',e2&&e2.message||String(e2));}
+      }
+      // Store transFrames so buildScript can compute silence duration for this transition
+      setTimeline(prev=>prev.map(t=>t.id===itemId?{...t,transition:{...t.transition,
+        generating:false,videoUrl:url,frames:transFrames,status:null,
+        usedPrompt:finalPrompt,conditioned:!!startFrame,swfSaved}}:t));
+    }catch(e){
+      setTimeline(prev=>prev.map(t=>t.id===itemId?{...t,transition:{...t.transition,generating:false,status:null,error:e.message}}:t));
+    }
+  },[width,height,transFrames,setTimeline,timeline,snippets,clips,ollamaOk]);
+
+  const autoPromptFor=useCallback((idx)=>{
+    if(idx<0||idx>=timeline.length-1)return'Smooth cinematic transition';
+    const snA=snippets.find(x=>x.id===timeline[idx].snippetId);
+    const snB=snippets.find(x=>x.id===timeline[idx+1]?.snippetId);
+    const clipA=snA?clips.find(c=>c.id===snA.clipId):null;
+    const clipB=snB?clips.find(c=>c.id===snB.clipId):null;
+    const aA=clipA?.analysis;const aB=clipB?.analysis;
+    // Build a richer fallback prompt from analysis data when available
+    if(aA||aB){
+      const fromDesc=aA?`${aA.mood||''} ${aA.setting||''} with ${aA.subject||''} ${aA.action||''}`.trim():(snA?.label||'scene A');
+      const toDesc=aB?`${aB.mood||''} ${aB.setting||''} with ${aB.subject||''} ${aB.action||''}`.trim():(snB?.label||'scene B');
+      return`Smooth cinematic transition from ${fromDesc} to ${toDesc}, seamless visual flow, high quality`;
+    }
+    return`Smooth cinematic transition from ${snA?.label||'scene'} to ${snB?.label||'next scene'}, high quality`;
+  },[timeline,snippets,clips]);
+
+  const generateAll=useCallback(async()=>{
+    setGenAll(true);
+    const aiItems=timeline.map((t,i)=>({...t,idx:i})).filter(t=>t.transition.type==='ltx-video'&&!t.transition.videoUrl);
+    for(const item of aiItems){
+      if(!item.transition.generating)
+        await generateOne(item.id,item.transition.prompt,autoPromptFor(item.idx));
+    }
+    setGenAll(false);
+  },[timeline,generateOne,autoPromptFor]);
+
+  return(
+    <div style={{animation:'fadeIn 0.2s ease'}}>
+      <span style={secT}>AI TRANSITION GENERATOR  COMFYUI + LTX-VIDEO</span>
+      {/* ComfyUI status */}
+      <div style={{...card,marginBottom:16,display:'flex',gap:16,alignItems:'center',padding:'10px 14px'}}>
+        <div style={{width:8,height:8,borderRadius:'50%',background:comfyOk?C.green:comfyOk===false?C.red:C.amber,animation:comfyOk===null?'pulse 1.5s infinite':undefined,flexShrink:0}}/>
+        <div style={{flex:1}}>
+          <div style={{fontSize:11,color:C.textHi,marginBottom:2}}>ComfyUI — {comfyOk?'Connected':'Offline'}</div>
+          <div style={{fontSize:9,fontFamily:C.mono,color:C.textDim}}>{COMFY_URL}  |  Video: {_ltxCkpt}  |  Text: {_t5Encoder}</div>
+        </div>
+        {!comfyOk&&<div style={{fontSize:10,color:C.amber,fontFamily:C.mono,maxWidth:220,lineHeight:1.6}}>Start: python main.py --listen --enable-cors-header  |  Nodes: ComfyUI-LTXVideo + VideoHelperSuite</div>}
+        <RestartComfyBtn setComfyOk={setComfyOk}/>
+      </div>
+      {/* Settings row */}
+      <div style={{display:'flex',gap:12,marginBottom:16,alignItems:'flex-end'}}>
+        <div style={{flex:1}}>
+          <label style={mkLbl(C)}>Output Width</label>
+          <select value={width} onChange={e=>{const w=Number(e.target.value);setWidth(w);setHeight(Math.round(w*9/16/32)*32);}} style={inp}>
+            <option value={512}>512×288 — 8GB VRAM (RTX 4070)</option>
+            <option value={640}>640×352 — 10GB VRAM</option>
+            <option value={704}>704×384 — 12GB VRAM</option>
+            <option value={768}>768×432 — 16GB VRAM</option>
+          </select>
+        </div>
+        <div style={{flex:1}}>
+          <label style={mkLbl(C)}>Transition Duration</label>
+          <select value={transFrames} onChange={e=>setTransFrames(Number(e.target.value))} style={inp}>
+            {FRAME_OPTS.map(o=><option key={o.f} value={o.f}>{o.label} ({o.f} frames @ {o.fps}fps)</option>)}
+          </select>
+        </div>
+        <Btn onClick={generateAll} disabled={!comfyOk||aiTransitions.length===0||genAll}>
+          <Sparkles size={13}/>{genAll?'GENERATING ALL...':'GENERATE ALL'}
+        </Btn>
+      </div>
+      {/* Transition cards */}
+      {aiTransitions.length===0&&<div style={{...card,textAlign:'center',padding:32,color:C.textDim,fontSize:11}}>
+        No AI transitions configured. Go to Timeline and set transition type to "AI GEN" between clips.
+      </div>}
+      {timeline.map((item,i)=>{
+        if(item.transition.type!=='ltx-video')return null;
+        const snA=snippets.find(x=>x.id===timeline[i]?.snippetId);
+        const snB=snippets.find(x=>x.id===timeline[i+1]?.snippetId);
+        if(!snB)return null;
+        const auto=autoPromptFor(i);
+        return(
+          <div key={item.id} style={{...card,marginBottom:12,animation:'fadeIn 0.2s ease'}}>
+            <div style={{display:'flex',gap:12,alignItems:'flex-start',marginBottom:12}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:9,fontFamily:C.mono,color:C.textDim,marginBottom:4}}>TRANSITION {i+1} OF {aiTransitions.length}</div>
+                <div style={{fontSize:12,color:C.textHi}}>{snA?.label||'?'} <span style={{color:C.accent}}> ➔ </span> {snB?.label||'?'}</div>
+              </div>
+              {item.transition.videoUrl&&<a href={item.transition.videoUrl} download={`transition_${item.id.slice(0,6)}.mp4`} title="Save this AI-generated transition clip" style={{background:C.greenBg,border:`1px solid ${C.green}55`,borderRadius:4,padding:'4px 10px',textDecoration:'none',fontSize:9,fontFamily:C.mono,color:C.green,display:'flex',alignItems:'center',gap:5,cursor:'pointer'}}><Download size={10}/>SAVE CLIP</a>}
+              {item.transition.generating&&<Tag color={C.amber} bg={C.amberBg}>GENERATING</Tag>}
+            </div>
+            {/* Prompt */}
+            <Field label="Transition Prompt">
+              <textarea value={item.transition.prompt} onChange={e=>setTimeline(prev=>prev.map(t=>t.id===item.id?{...t,transition:{...t.transition,prompt:e.target.value}}:t))}
+                placeholder={auto}
+                style={{...inp,minHeight:52,resize:'vertical',fontSize:11}}/>
+            </Field>
+            {/* Preset prompts */}
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:9,fontFamily:C.mono,color:C.textDim,letterSpacing:'0.1em',marginBottom:6}}>PRESET PROMPTS — click to apply, then edit:</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                {TRANSITION_PRESETS.map((p,pi)=>(
+                  <button key={pi} onClick={()=>setTimeline(prev=>prev.map(t=>t.id===item.id?{...t,transition:{...t.transition,prompt:p}}:t))}
+                    style={{background:item.transition.prompt===p?C.accentBg:C.surface,border:`1px solid ${item.transition.prompt===p?C.accent:C.border}`,borderRadius:3,padding:'3px 9px',cursor:'pointer',fontSize:9,fontFamily:C.mono,color:item.transition.prompt===p?C.accent:C.text,transition:'all 0.1s',textAlign:'left'}}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Status / error */}
+            {item.transition.status&&<div style={{fontSize:10,fontFamily:C.mono,color:C.accent,marginBottom:8}}>
+              <Loader size={10} style={{animation:'spin 1s linear infinite',display:'inline',marginRight:5}}/>{item.transition.status}
+            </div>}
+            {item.transition.error&&<div style={{background:C.redBg,border:`1px solid ${C.red}33`,borderRadius:4,padding:'6px 10px',fontSize:10,fontFamily:C.mono,color:C.red,marginBottom:8}}>Error: {item.transition.error}</div>}
+            {/* Preview */}
+            {item.transition.videoUrl&&<video src={item.transition.videoUrl} autoPlay loop muted playsInline
+              style={{width:'100%',aspectRatio:'16/9',borderRadius:5,objectFit:'cover',marginBottom:6,border:`1px solid ${C.green}44`}}/>}
+            {/* Generation metadata — conditioned frame + used prompt */}
+            {item.transition.videoUrl&&<div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:10,alignItems:'center'}}>
+              <Tag color={item.transition.conditioned?C.green:C.textDim} bg={item.transition.conditioned?C.greenBg:C.surface}>
+                {item.transition.conditioned?'I2V CONDITIONED':'TEXT-TO-VIDEO'}
+              </Tag>
+              {item.transition.usedPrompt&&<span style={{fontSize:9,fontFamily:C.mono,color:C.textDim,flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={item.transition.usedPrompt}>
+                {item.transition.usedPrompt}
+              </span>}
+            </div>}
+            <Btn onClick={()=>generateOne(item.id,item.transition.prompt,auto)}
+              disabled={!comfyOk||item.transition.generating} style={{marginTop:4}}>
+              <Wand size={12}/>{item.transition.videoUrl?'REGENERATE':'GENERATE'}
+            </Btn>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── CompilationPreview ────────────────────────────────────────────────────────
+function CompilationPreview({clips,snippets,timeline}){
+  const C=useTheme();
+  const vidRef=useRef(null);
+  const [segIdx,setSegIdx]=useState(0);
+  const [playing,setPlaying]=useState(false);
+  const [ready,setReady]=useState(false);
+  // Refs shadow state so event handlers never capture stale closures
+  const segIdxRef=useRef(0);
+  const segsRef=useRef([]);
+
+  // Build flat segment list: clips interleaved with AI transition clips where generated
+  const segments=useMemo(()=>{
+    const result=[];
+    timeline.forEach((item,i)=>{
+      const sn=snippets.find(s=>s.id===item.snippetId);
+      const clip=sn?clips.find(c=>c.id===sn.clipId):null;
+      if(!sn||!clip)return;
+      result.push({url:clip.url,inPt:sn.inPoint,outPt:sn.outPoint,label:sn.label,type:'clip'});
+      // Insert AI transition clip between this and the next snippet
+      if(i<timeline.length-1&&item.transition.type==='ltx-video'&&item.transition.videoUrl)
+        result.push({url:item.transition.videoUrl,inPt:0,outPt:null,label:'AI Transition',type:'transition'});
+    });
+    return result;
+  },[clips,snippets,timeline]);
+
+  useEffect(()=>{segsRef.current=segments;},[segments]);
+
+  const goToSeg=useCallback((i,autoPlay)=>{
+    const vid=vidRef.current;const segs=segsRef.current;
+    if(!vid||!segs[i])return;
+    segIdxRef.current=i;setSegIdx(i);setReady(false);
+    vid.src=segs[i].url;vid.currentTime=segs[i].inPt||0;
+    if(autoPlay)vid.play().catch(()=>{});
+  },[]);
+
+  useEffect(()=>{
+    segIdxRef.current=0;setSegIdx(0);setPlaying(false);goToSeg(0,false);
+  },[segments.length,goToSeg]);
+
+  // advance() is called when the current segment ends (timeupdate threshold OR ended event)
+  const advance=useCallback(()=>{
+    const vid=vidRef.current;if(!vid)return;
+    const next=segIdxRef.current+1;
+    if(next<segsRef.current.length){
+      goToSeg(next,true);        // autoPlay=true: advance always fires while playing
+    }else{
+      vid.pause();setPlaying(false);
+      goToSeg(0,false);          // rewind to start, paused
+    }
+  },[goToSeg]);
+
+  // Snippet clips end at their outPt — advance via timeupdate
+  const onTimeUpdate=useCallback(()=>{
+    const vid=vidRef.current;if(!vid)return;
+    const seg=segsRef.current[segIdxRef.current];
+    if(!seg||seg.outPt===null)return;  // transition clips use onEnded
+    if(vid.currentTime>=seg.outPt-0.1)advance();
+  },[advance]);
+
+  // Transition clips (full video) end naturally — advance via ended event
+  const onEnded=useCallback(()=>advance(),[advance]);
+
+  const togglePlay=()=>{
+    const vid=vidRef.current;if(!vid||!segsRef.current.length)return;
+    if(playing){vid.pause();setPlaying(false);}
+    else{
+      const seg=segsRef.current[segIdxRef.current];
+      if(seg)vid.currentTime=seg.inPt||0;
+      vid.play().then(()=>setPlaying(true)).catch(()=>{});
+    }
+  };
+
+  if(!segments.length)return(
+    <div style={{...mkCard(C),textAlign:'center',padding:28,color:C.textDim,marginBottom:16}}>
+      <Video size={26} color={C.textDim} style={{margin:'0 auto 10px'}}/>
+      <div style={{fontSize:11}}>Add snippets to the timeline to preview the compilation</div>
+    </div>
+  );
+
+  const curSeg=segments[segIdx];
+  return(
+    <div style={{...mkCard(C),padding:0,overflow:'hidden',marginBottom:16}}>
+      <div style={{aspectRatio:'16/9',background:'#030810',position:'relative'}}>
+        <video ref={vidRef} style={{width:'100%',height:'100%',objectFit:'contain'}}
+          onCanPlay={()=>setReady(true)} onTimeUpdate={onTimeUpdate} onEnded={onEnded}
+          onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)}/>
+        {!ready&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <Loader size={20} color={C.accent} style={{animation:'spin 1s linear infinite'}}/>
+        </div>}
+        {curSeg?.type==='transition'&&<div style={{position:'absolute',top:8,left:8}}>
+          <Tag color={C.accent} bg={C.accentBg}>AI TRANSITION</Tag>
+        </div>}
+      </div>
+      <div style={{padding:'10px 14px',background:C.surface,display:'flex',alignItems:'center',gap:10,borderTop:`1px solid ${C.border}`}}>
+        <button onClick={togglePlay} style={{background:C.accentBg,border:`1px solid ${C.accent}44`,borderRadius:4,padding:'5px 11px',cursor:'pointer',color:C.accent,display:'flex',alignItems:'center',gap:5}}>
+          {playing?<Pause size={12}/>:<Play size={12}/>}
+        </button>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:10,color:curSeg?.type==='transition'?C.accent:C.textHi,fontFamily:C.mono,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+            {curSeg?.label||`Segment ${segIdx+1}`}
+          </div>
+          <div style={{fontSize:8,fontFamily:C.mono,color:C.textDim}}>
+            {curSeg?.type==='transition'?'TRANSITION':'CLIP'} {segIdx+1} / {segments.length}
+          </div>
+        </div>
+        <div style={{display:'flex',gap:4,alignItems:'center'}}>
+          {segments.map((seg,i)=>(
+            <div key={i} onClick={()=>goToSeg(i,false)}
+              style={{width:seg.type==='transition'?5:8,height:seg.type==='transition'?5:8,
+                borderRadius:'50%',cursor:'pointer',flexShrink:0,transition:'background 0.15s',
+                background:i===segIdx?C.accent:seg.type==='transition'?C.accentBg:C.border,
+                border:seg.type==='transition'?`1px solid ${C.accent}44`:'none'}}/>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ModAudio ──────────────────────────────────────────────────────────────────
+function ModAudio({audioUrl,setAudioUrl,audioName,setAudioName,onEnsureSession,audioSwfSaved,setAudioSwfSaved}){
+  const C=useTheme();const secT=mkSecT(C),card=mkCard(C);
+  const fileRef=useRef(null);
+  const [dragging,setDragging]=useState(false);
+  const [saving,setSaving]=useState(false);
+
+  const loadFile=useCallback(async(file)=>{
+    if(!file)return;
+    const ok=file.type.startsWith('audio/')||/\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name);
+    if(!ok)return;
+    if(audioUrl)URL.revokeObjectURL(audioUrl);
+    setAudioUrl(URL.createObjectURL(file));
+    setAudioName(file.name);
+    setAudioSwfSaved?.(false);
+    // Auto-save to SWF if server available
+    if(onEnsureSession){
+      setSaving(true);
+      try{
+        const {sid}=await onEnsureSession();
+        await fetch(`${SERVE_URL}/api/session/${sid}/save-asset`,{
+          method:'POST',
+          headers:{'X-Filename':file.name,'Content-Type':file.type||'application/octet-stream'},
+          body:file
+        });
+        setAudioSwfSaved?.(true);
+      }catch(e){console.warn('EdgeVideo: audio SWF save skipped',e&&e.message||String(e));}
+      finally{setSaving(false);}
+    }
+  },[audioUrl,setAudioUrl,setAudioName,onEnsureSession,setAudioSwfSaved]);
+
+  const onDrop=useCallback((e)=>{
+    e.preventDefault();setDragging(false);loadFile(e.dataTransfer.files[0]);
+  },[loadFile]);
+
+  return(
+    <div style={{animation:'fadeIn 0.2s ease'}}>
+      <span style={secT}>AUDIO TRACK — MP3 / WAV / OGG / M4A</span>
+      {/* Drop / click zone */}
+      <div onDrop={onDrop} onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)}
+        onClick={()=>fileRef.current?.click()}
+        style={{...card,border:`2px dashed ${dragging?C.accent:C.border}`,background:dragging?C.accentBg:'transparent',marginBottom:14,minHeight:100,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10,cursor:'pointer',transition:'all 0.15s'}}>
+        <input ref={fileRef} type="file" accept="audio/*" style={{display:'none'}} onChange={e=>loadFile(e.target.files[0])}/>
+        <Music size={26} color={dragging?C.accent:C.textDim}/>
+        <div style={{textAlign:'center'}}>
+          <div style={{fontSize:12,color:dragging?C.accent:C.textHi,marginBottom:3}}>
+            {audioUrl?'Drop to replace  ·  or click to browse':'Drop an audio file here  ·  or click to browse'}
+          </div>
+          <div style={{fontSize:10,fontFamily:C.mono,color:C.textDim}}>MP3  WAV  OGG  M4A  AAC  FLAC</div>
+        </div>
+      </div>
+      {/* Embedded player */}
+      {audioUrl?(
+        <div style={card}>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+            <Music size={13} color={C.accent}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:11,color:C.textHi,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{audioName}</div>
+              <div style={{fontSize:9,fontFamily:C.mono,color:saving?C.accent:audioSwfSaved?C.green:C.textDim}}>
+                {saving?'Saving to session…':audioSwfSaved?'Saved to session ✓':'In memory — will upload on export'}
+              </div>
+            </div>
+            <button onClick={()=>{URL.revokeObjectURL(audioUrl);setAudioUrl(null);setAudioName('');}}
+              title="Remove audio" style={{background:'transparent',border:'none',cursor:'pointer',color:C.textDim,padding:3,flexShrink:0}}>
+              <X size={12}/>
+            </button>
+          </div>
+          <audio controls src={audioUrl} style={{width:'100%',display:'block',borderRadius:4}}/>
+        </div>
+      ):(
+        <div style={{...card,textAlign:'center',padding:20,color:C.textDim,fontSize:10,fontFamily:C.mono}}>
+          No audio loaded — final compilation will be video only
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ModExport ─────────────────────────────────────────────────────────────────
+function ModExport({clips,snippets,timeline,audioUrl,audioName,audioSwfSaved,diskFreeGb,
+                    gwfPath,swfPath,sessionId,onEnsureSession,serveOnline}){
+  const C=useTheme();const secT=mkSecT(C),card=mkCard(C),inp=mkInp(C);
+  const [projName,setProjName]=useState('my_compilation');
+  const [expQ,setExpQ]=useState('hd');
+  // mix: 0=clip only · 50=balanced · 100=music only
+  // clip% = mix<=50 ? 100 : (100-mix)*2   music% = mix<=50 ? mix*2 : 100
+  const [mix,setMix]=useState(40); // default: clip 100%, music 80%
+  // Phase: 'idle' | 'preparing' | 'encoding' | 'done' | 'error'
+  const [phase,setPhase]=useState('idle');
+  const [phaseMsg,setPhaseMsg]=useState('');
+  const [frame,setFrame]=useState(0);
+  const [elapsed,setElapsed]=useState(0);
+  const [errMsg,setErrMsg]=useState('');
+  const [outputFile,setOutputFile]=useState('');
+  const [outputSize,setOutputSize]=useState(0);
+  const pollRef=useRef(null);
+  const activeSessionRef=useRef(null);
+
+  // cleanup poll on unmount
+  useEffect(()=>()=>{if(pollRef.current)clearInterval(pollRef.current);},[]);
+  // reset phase if serve goes offline mid-encode
+  useEffect(()=>{if(!serveOnline&&phase==='encoding'){setPhase('error');setErrMsg('Server went offline during export');}
+  },[serveOnline,phase]);
+
+  const totalDur=useMemo(()=>timeline.reduce((s,t)=>{
+    const sn=snippets.find(x=>x.id===t.snippetId);return s+(sn?sn.outPoint-sn.inPoint:0);
+  },0),[timeline,snippets]);
+  const aiDone=timeline.filter(t=>t.transition.type==='ltx-video'&&t.transition.videoUrl).length;
+  const aiTotal=timeline.filter(t=>t.transition.type==='ltx-video').length;
+  const quals={draft:{preset:'fast',crf:28,label:'Draft 720p'},hd:{preset:'medium',crf:23,label:'HD 1080p'},'4k':{preset:'slow',crf:18,label:'4K 2160p'}};
+  const q=quals[expQ];
+
+  // ── Build export script (uses GWF/SWF absolute paths when serve online) ──────
+  const buildScript=useCallback((resolvedGwf,resolvedSwf)=>{
+    if(!timeline.length)return'# No timeline items — add clips first';
+    const useServer=!!(resolvedGwf&&resolvedSwf);
+    // gwfName may be missing on clips loaded before server was ready —
+    // recover it from the serve URL query param (name=filename.mp4)
+    const resolveGwfName=(clip)=>{
+      if(clip.gwfName)return clip.gwfName;
+      if(clip.url){
+        try{const m=clip.url.match(/[?&]name=([^&]+)/);if(m)return decodeURIComponent(m[1]);}catch(_){}
+      }
+      return null;
+    };
+    const inputMap=new Map();let idx=0;const inputLines=[];
+    timeline.map(t=>snippets.find(s=>s.id===t.snippetId)).filter(Boolean).forEach(sn=>{
+      const clip=clips.find(c=>c.id===sn.clipId);
+      if(clip&&!inputMap.has(clip.id)){
+        inputMap.set(clip.id,idx++);
+        const gwfName=resolveGwfName(clip);
+        const src=useServer&&gwfName
+          ?`${resolvedGwf}\\${gwfName}`
+          :`${clip.name}.mp4`;
+        inputLines.push(`  -i "${src}"`);
+      }
+    });
+    const trMap=new Map();
+    timeline.forEach(item=>{
+      if(item.transition.type==='ltx-video'&&item.transition.videoUrl){
+        trMap.set(item.id,idx++);
+        const src=useServer?`${resolvedSwf}\\transition_${item.id.slice(0,6)}.mp4`:`transition_${item.id.slice(0,6)}.mp4`;
+        inputLines.push(`  -i "${src}"`);
+      }
+    });
+    let audioIdx=-1;
+    if(audioUrl){
+      const src=useServer?`${resolvedSwf}\\${audioName||'audio.mp3'}`:audioName||'audio.mp3';
+      inputLines.push(`  -i "${src}"`);
+      audioIdx=idx++;   // record which ffmpeg input index the audio file occupies
+    }
+
+    const segs=[];
+    timeline.forEach((item,i)=>{
+      const sn=snippets.find(s=>s.id===item.snippetId);if(!sn)return;
+      const clip=clips.find(c=>c.id===sn.clipId);if(!clip)return;
+      segs.push({type:'clip',ci:inputMap.get(clip.id),inPt:sn.inPoint,outPt:sn.outPoint});
+      if(i<timeline.length-1&&trMap.has(item.id)){
+        const dur=(item.transition.frames||49)/24;
+        segs.push({type:'ai',ti:trMap.get(item.id),dur});
+      }
+    });
+
+    const filters=[];
+    segs.forEach((seg,j)=>{
+      if(seg.type==='clip'){
+        filters.push(`  [${seg.ci}:v]trim=start=${seg.inPt.toFixed(3)}:end=${seg.outPt.toFixed(3)},setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=24[vs${j}]`);
+        filters.push(`  [${seg.ci}:a]atrim=start=${seg.inPt.toFixed(3)}:end=${seg.outPt.toFixed(3)},asetpts=PTS-STARTPTS[as${j}]`);
+      }else{
+        filters.push(`  [${seg.ti}:v]scale=1920:1080,setsar=1,fps=24[vs${j}]`);
+        filters.push(`  aevalsrc=0:c=stereo:s=44100:d=${seg.dur.toFixed(3)}[as${j}]`);
+      }
+    });
+    const concatIn=segs.map((_,j)=>`[vs${j}][as${j}]`).join('');
+    filters.push(`  ${concatIn}concat=n=${segs.length}:v=1:a=1[outv][outa_clips]`);
+
+    const captionDrawtexts=[];
+    let absT=0;
+    timeline.forEach((item,i)=>{
+      const sn=snippets.find(s=>s.id===item.snippetId);if(!sn)return;
+      const snDur=sn.outPoint-sn.inPoint;
+      if(sn.caption?.enabled&&sn.caption?.text){
+        const cap=sn.caption;
+        const t0=absT+(cap.startTime??2);
+        const t1=t0+(cap.duration??3);
+        const fs=Math.round((cap.fontSize??32)*4);
+        const txt=cap.text.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/:/g,'\\:');
+        captionDrawtexts.push(
+          `drawtext=text='${txt}':fontfile=arialbd.ttf`+
+          `:fontsize=${fs}:fontcolor=white`+
+          `:x=(w-text_w)/2:y=h*0.85-text_h/2`+
+          `:box=1:boxcolor=black@0.45:boxborderw=10`+
+          `:enable='between(t,${t0.toFixed(3)},${t1.toFixed(3)})'`
+        );
+      }
+      absT+=snDur;
+      if(i<timeline.length-1&&item.transition.type==='ltx-video'&&item.transition.videoUrl)
+        absT+=(item.transition.frames||49)/24;
+    });
+    let videoOutLabel='outv';
+    if(captionDrawtexts.length>0){
+      filters.push(`  [outv]${captionDrawtexts.join(',\n  ')}[outv_cap]`);
+      videoOutLabel='outv_cap';
+    }
+
+    const cvol=(mix<=50?1:(100-mix)/50).toFixed(2);
+    const mvol=(mix<=50?mix/50:1).toFixed(2);
+    let audioMapArg,audioEnc;
+    if(audioUrl){
+      filters.push(`  [outa_clips]volume=${cvol}[clips_adj]`);
+      filters.push(`  [${audioIdx}:a]asetpts=PTS-STARTPTS,volume=${mvol}[music_adj]`);
+      filters.push(`  [clips_adj][music_adj]amix=inputs=2:duration=longest:normalize=0[outa]`);
+      audioMapArg='-map "[outa]" ';audioEnc=' -c:a aac -b:a 192k';
+    }else{
+      filters.push(`  [outa_clips]volume=${cvol}[outa]`);
+      audioMapArg='-map "[outa]" ';audioEnc=' -c:a aac -b:a 192k';
+    }
+    return[
+      `# EdgeVideo Export Script — ${useServer?'server-managed':'standalone'}`,
+      `# Project : ${projName}  |  Quality: ${q.label}`,
+      `# Duration: ${fmtTime(totalDur)}  |  Clips: ${timeline.length}  |  AI transitions: ${aiDone}  |  Captions: ${captionDrawtexts.length}`,
+      `# Generated: ${new Date().toLocaleString()}`,
+      ``,
+      `$ffmpeg = "ffmpeg"`,
+      ``,
+      `& $ffmpeg \``,
+      ...inputLines.map(l=>`${l} \``),
+      `  -filter_complex @"`,
+      filters.join(';\n'),
+      `"@ \``,
+      `  -map "[${videoOutLabel}]" ${audioMapArg}\``,
+      `  -c:v libx264 -preset ${q.preset} -crf ${q.crf}${audioEnc} \``,
+      `  -t ${totalDur.toFixed(3)} \``,
+      `  "${projName}.mp4"`,
+      ``,
+      `if ($LASTEXITCODE -eq 0) {`,
+      `  Write-Host "Export complete: ${projName}.mp4" -ForegroundColor Green`,
+      `} else {`,
+      `  Write-Host "FFmpeg error - check output above" -ForegroundColor Red`,
+      `}`,
+    ].join('\n');
+  },[timeline,snippets,clips,audioUrl,audioName,projName,expQ,q,totalDur,aiDone,mix]);
+
+  // ── Server-side export flow ──────────────────────────────────────────────────
+  const startExport=useCallback(async()=>{
+    if(!serveOnline||!onEnsureSession){
+      // Fallback: download script
+      const script=buildScript(null,null);
+      const blob=new Blob(['﻿'+script],{type:'text/plain;charset=utf-8'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+      a.download=`${projName}_export.ps1`;a.click();URL.revokeObjectURL(a.href);
+      return;
+    }
+    setPhase('preparing');setErrMsg('');setFrame(0);setElapsed(0);
+    setPlayUrl(null);setActionMsg(null);
+    try{
+      setPhaseMsg('Creating session…');
+      const {sid,swf}=await onEnsureSession();
+      activeSessionRef.current=sid;
+
+      // Upload any AI transitions not yet saved to SWF
+      const unsavedTrans=timeline.filter(t=>t.transition.type==='ltx-video'&&t.transition.videoUrl&&!t.transition.swfSaved);
+      for(const item of unsavedTrans){
+        setPhaseMsg(`Saving transition ${item.id.slice(0,6)}…`);
+        const blob=await fetch(item.transition.videoUrl).then(r=>r.blob());
+        await fetch(`${SERVE_URL}/api/session/${sid}/save-asset`,{
+          method:'POST',
+          headers:{'X-Filename':`transition_${item.id.slice(0,6)}.mp4`,'Content-Type':'application/octet-stream'},
+          body:blob
+        });
+      }
+
+      // Upload audio if not yet saved
+      if(audioUrl&&!audioSwfSaved){
+        setPhaseMsg('Saving audio track…');
+        const blob=await fetch(audioUrl).then(r=>r.blob());
+        await fetch(`${SERVE_URL}/api/session/${sid}/save-asset`,{
+          method:'POST',
+          headers:{'X-Filename':audioName||'audio.mp3','Content-Type':'audio/mpeg'},
+          body:blob
+        });
+      }
+
+      // Save state.json
+      const stateData={projName,expQ,clipCount:timeline.length,totalDur,gwf:gwfPath,swf};
+      await fetch(`${SERVE_URL}/api/session/${sid}/state`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(stateData)
+      });
+
+      setPhaseMsg('Starting encoder…');
+      const script=buildScript(gwfPath,swf);
+      const r=await fetch(`${SERVE_URL}/api/session/${sid}/export`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({script,projName})
+      });
+      if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.message||`Export start failed: ${r.status}`);}
+
+      setPhase('encoding');setPhaseMsg('');
+      // Poll for progress
+      const t0=Date.now();
+      pollRef.current=setInterval(async()=>{
+        try{
+          const s=await fetch(`${SERVE_URL}/api/session/${sid}/export-status`).then(r=>r.json());
+          setFrame(s.frame||0);setElapsed(Math.round((Date.now()-t0)/1000));
+          if(s.status==='done'){
+            clearInterval(pollRef.current);pollRef.current=null;
+            setOutputFile(s.outputFile||`${projName}.mp4`);
+            setOutputSize(s.outputSize||0);
+            setPhase('done');
+          }else if(s.status==='error'){
+            clearInterval(pollRef.current);pollRef.current=null;
+            setPhase('error');setErrMsg('ffmpeg exited with error — check the session folder for export.log');
+          }
+        }catch(e){/* transient — keep polling */}
+      },1500);
+    }catch(e){setPhase('error');setErrMsg(e&&e.message||String(e));}
+  },[serveOnline,onEnsureSession,timeline,audioUrl,audioName,audioSwfSaved,buildScript,projName,gwfPath]);
+
+  // ── Done-panel action handlers ───────────────────────────────────────────
+  const [playUrl,setPlayUrl]=useState(null);     // in-UI <video> src when set
+  const [actionMsg,setActionMsg]=useState(null); // {text, color} surfaced to user
+  const [actionBusy,setActionBusy]=useState(null); // 'save'|'delete'|null
+
+  const doPlay=useCallback(()=>{
+    const sid=activeSessionRef.current;if(!sid)return;
+    // Use the new streaming endpoint so playback happens inline. Cache-bust
+    // with t= so re-playing after a re-export doesn't load stale bytes.
+    setPlayUrl(`${SERVE_URL}/api/session/${sid}/output?t=${Date.now()}`);
+    setActionMsg(null);
+  },[]);
+  const doSaveAs=useCallback(()=>{
+    const sid=activeSessionRef.current;if(!sid)return;
+    // Trigger a browser download — the browser's native Save dialog appears.
+    // No Tkinter dialog bridge needed.
+    const a=document.createElement('a');
+    a.href=`${SERVE_URL}/api/session/${sid}/download`;
+    a.download=`${projName}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setActionMsg({text:'Download started — check your browser downloads.',color:C.green});
+    setTimeout(()=>setActionMsg(null),4000);
+  },[C]);
+  const doDelete=useCallback(async()=>{
+    const sid=activeSessionRef.current;if(!sid)return;
+    if(!confirm('Delete this compilation? This cannot be undone.'))return;
+    setActionBusy('delete');setActionMsg(null);
+    // Tear down the inline <video> so it releases any browser-side handle
+    // BEFORE the server tries to rm the directory.
+    setPlayUrl(null);
+    try{
+      const r=await fetch(`${SERVE_URL}/api/session/${sid}`,{method:'DELETE'});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||`HTTP ${r.status}`);
+      activeSessionRef.current=null;setPhase('idle');setOutputFile('');setOutputSize(0);
+    }catch(e){setActionMsg({text:`Delete failed: ${e.message}`,color:C.red});}
+    finally{setActionBusy(null);}
+  },[C]);
+  const downloadScriptFallback=()=>{
+    const script=buildScript(gwfPath,swfPath);
+    const blob=new Blob(['﻿'+script],{type:'text/plain;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download=`${projName}_export.ps1`;a.click();URL.revokeObjectURL(a.href);
+  };
+
+  const aiTransitions=timeline.filter(t=>t.transition.type==='ltx-video'&&t.transition.videoUrl);
+  const usedClips=clips.filter(clip=>timeline.some(t=>{const sn=snippets.find(s=>s.id===t.snippetId);return sn?.clipId===clip.id;}));
+  const canExport=timeline.length>0&&phase==='idle';
+
+  return(
+    <div style={{animation:'fadeIn 0.2s ease'}}>
+      <span style={secT}>COMPILATION EXPORT</span>
+      {/* Preview player */}
+      <CompilationPreview clips={clips} snippets={snippets} timeline={timeline}/>
+      {/* Summary stats */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:10,marginBottom:14}}>
+        {[['CLIPS',timeline.length,C.blue],['DURATION',fmtTime(totalDur),Math.abs(totalDur-300)<30?C.green:C.amber],
+          ['AI TRANS',`${aiDone}/${aiTotal}`,aiDone===aiTotal&&aiTotal>0?C.green:C.amber],
+          ['AUDIO',audioUrl?'YES':'NO',audioUrl?C.green:C.textDim]].map(([k,v,c])=>(
+          <div key={k} style={{...card,textAlign:'center',padding:'10px 8px'}}>
+            <div style={{fontSize:16,fontFamily:C.mono,color:c,marginBottom:3}}>{v}</div>
+            <div style={{fontSize:9,fontFamily:C.mono,color:C.textDim}}>{k}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── ENCODING IN PROGRESS ───────────────────────────────────────────── */}
+      {(phase==='preparing'||phase==='encoding')&&<div style={{...card,marginBottom:14,padding:20}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+          <Loader size={16} color={C.accent} style={{animation:'spin 1s linear infinite',flexShrink:0}}/>
+          <div>
+            <div style={{fontSize:12,color:C.textHi,fontWeight:600}}>
+              {phase==='preparing'?'Preparing export…':'Encoding…'}
+            </div>
+            <div style={{fontSize:10,fontFamily:C.mono,color:C.textDim,marginTop:2}}>{phaseMsg}</div>
+          </div>
+        </div>
+        {phase==='encoding'&&<>
+          <div style={{height:6,background:C.border,borderRadius:3,overflow:'hidden',marginBottom:8}}>
+            <div style={{height:'100%',background:C.accent,borderRadius:3,
+              width:`${Math.min(100,frame/Math.max(1,totalDur*24)*100).toFixed(1)}%`,transition:'width 0.5s ease'}}/>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:9,fontFamily:C.mono,color:C.textDim}}>
+            <span>Frame {frame.toLocaleString()} / ~{Math.round(totalDur*24).toLocaleString()}</span>
+            <span>Elapsed: {fmtTime(elapsed)}</span>
+            {elapsed>0&&frame>0&&<span>~{fmtTime(Math.round(elapsed/frame*(totalDur*24-frame)))} remaining</span>}
+          </div>
+        </>}
+      </div>}
+
+      {/* ── DONE ───────────────────────────────────────────────────────────── */}
+      {phase==='done'&&<div style={{...card,marginBottom:14,padding:20,border:`1px solid ${C.green}44`,background:C.greenBg}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+          <CircleCheck size={20} color={C.green}/>
+          <div>
+            <div style={{fontSize:13,color:C.green,fontWeight:700}}>Export complete!</div>
+            <div style={{fontSize:10,fontFamily:C.mono,color:C.textDim,marginTop:2}}>
+              {outputFile}  ·  {outputSize>0?`${(outputSize/1e6).toFixed(1)} MB`:''}  ·  {fmtTime(elapsed)} encode time
+            </div>
+          </div>
+        </div>
+        {/* In-UI video preview (replaces external player) */}
+        {playUrl&&<div style={{marginBottom:14,background:'#000',borderRadius:5,overflow:'hidden',border:`1px solid ${C.border}`}}>
+          <video key={playUrl} src={playUrl} controls autoPlay
+            style={{display:'block',width:'100%',maxHeight:420,background:'#000'}}
+            onError={e=>setActionMsg({text:'Playback error — the server may have lost the file',color:C.red})}/>
+        </div>}
+        <div style={{display:'flex',gap:10}}>
+          <Btn onClick={doPlay} disabled={!!actionBusy} style={{flex:1,justifyContent:'center'}}>
+            <Play size={13}/>{playUrl?'REPLAY':'PLAY'}
+          </Btn>
+          <Btn onClick={doSaveAs} disabled={!!actionBusy} style={{flex:1,justifyContent:'center',background:C.blue}}>
+            {actionBusy==='save'?<Loader size={13} style={{animation:'spin 1s linear infinite'}}/>:<Save size={13}/>}
+            SAVE AS…
+          </Btn>
+          <button onClick={doDelete} disabled={!!actionBusy}
+            style={{background:C.redBg,border:`1px solid ${C.red}44`,borderRadius:5,padding:'8px 14px',fontSize:11,fontFamily:C.mono,fontWeight:700,cursor:actionBusy?'wait':'pointer',color:C.red,display:'flex',alignItems:'center',gap:7,opacity:actionBusy?0.5:1}}>
+            {actionBusy==='delete'?<Loader size={13} style={{animation:'spin 1s linear infinite'}}/>:<Trash2 size={13}/>}
+            DELETE
+          </button>
+        </div>
+        {actionMsg&&<div style={{fontSize:10,fontFamily:C.mono,color:actionMsg.color,marginTop:10,padding:'6px 8px',background:C.surface,borderRadius:4,border:`1px solid ${actionMsg.color}33`}}>
+          {actionMsg.text}
+        </div>}
+        {!actionMsg&&<div style={{fontSize:9,fontFamily:C.mono,color:C.textDim,marginTop:10}}>
+          {playUrl?'Playing inline.':'Click PLAY to preview here.'} Save As… copies the file to your chosen location. Delete removes this session permanently.
+        </div>}
+      </div>}
+
+      {/* ── ERROR ──────────────────────────────────────────────────────────── */}
+      {phase==='error'&&<div style={{...card,marginBottom:14,padding:16,border:`1px solid ${C.red}44`,background:C.redBg}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+          <TriangleAlert size={14} color={C.red}/>
+          <span style={{fontSize:12,color:C.red,fontWeight:700}}>Export failed</span>
+        </div>
+        <div style={{fontSize:10,fontFamily:C.mono,color:C.red,marginBottom:12}}>{errMsg}</div>
+        <Btn onClick={()=>setPhase('idle')}>Try Again</Btn>
+      </div>}
+
+      {/* ── IDLE — settings + export button ───────────────────────────────── */}
+      {phase==='idle'&&<>
+        {/* Project settings */}
+        <div style={{...card,marginBottom:14}}>
+          <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:12,alignItems:'flex-end'}}>
+            <div>
+              <label style={mkLbl(C)}>Output filename</label>
+              <input value={projName} onChange={e=>setProjName(e.target.value.replace(/[^a-zA-Z0-9_\-]/g,'_')||'my_compilation')} style={inp} placeholder="my_compilation"/>
+            </div>
+            <div>
+              <label style={mkLbl(C)}>Quality</label>
+              <select value={expQ} onChange={e=>setExpQ(e.target.value)} style={inp}>
+                {Object.entries(quals).map(([id,{label}])=><option key={id} value={id}>{label}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+        {/* Audio mix crossfader */}
+        <div style={{...card,marginBottom:14,opacity:audioUrl?1:0.45}}>
+          <div style={{fontSize:10,fontFamily:C.mono,color:C.textDim,marginBottom:10,letterSpacing:'0.08em'}}>AUDIO MIX</div>
+          {/* Level readout row */}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:8}}>
+            <div>
+              <div style={{fontSize:9,fontFamily:C.mono,color:C.blue,marginBottom:2}}>CLIP AUDIO</div>
+              <div style={{fontSize:16,fontFamily:C.mono,color:C.textHi,lineHeight:1}}>{mix<=50?100:Math.round((100-mix)*2)}%</div>
+            </div>
+            <div style={{fontSize:9,fontFamily:C.mono,color:C.textDim,textAlign:'center'}}>
+              {mix===50?'BALANCED':mix<50?'◀ CLIP FAVOURED':'MUSIC FAVOURED ▶'}
+            </div>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontSize:9,fontFamily:C.mono,color:audioUrl?C.amber:C.textDim,marginBottom:2}}>MUSIC</div>
+              <div style={{fontSize:16,fontFamily:C.mono,color:audioUrl?C.textHi:C.textDim,lineHeight:1}}>{audioUrl?`${mix<=50?Math.round(mix*2):100}%`:'—'}</div>
+            </div>
+          </div>
+          {/* Single crossfader slider */}
+          <input type="range" min={0} max={100} step={1} value={mix}
+            disabled={!audioUrl}
+            onChange={e=>setMix(Number(e.target.value))}
+            style={{
+              width:'100%',cursor:audioUrl?'pointer':'default',
+              background:`linear-gradient(to right,${C.blue} ${mix}%,${C.amber} ${mix}%)`,
+              accentColor: mix<50?C.blue:mix>50?C.amber:'#aaa',
+              height:6,borderRadius:3,outline:'none',border:'none',
+            }}/>
+          {/* Scale labels */}
+          <div style={{display:'flex',justifyContent:'space-between',marginTop:5}}>
+            <span style={{fontSize:8,fontFamily:C.mono,color:C.blue}}>CLIP ONLY</span>
+            <span style={{fontSize:8,fontFamily:C.mono,color:C.textDim}}>50 / 50</span>
+            <span style={{fontSize:8,fontFamily:C.mono,color:audioUrl?C.amber:C.textDim}}>MUSIC ONLY</span>
+          </div>
+        </div>
+        {/* Asset readiness */}
+        <div style={{...card,marginBottom:14}}>
+          <div style={{fontSize:10,fontFamily:C.mono,color:C.textDim,marginBottom:8,letterSpacing:'0.08em'}}>ASSET STATUS</div>
+          {usedClips.map(clip=>(
+            <div key={clip.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:`1px solid ${C.border}`}}>
+              <Film size={11} color={C.blue}/>
+              <div style={{flex:1,fontSize:10,color:C.textHi,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{clip.gwfName||clip.name+'.mp4'}</div>
+              <Tag color={clip.gwfName?C.green:C.amber} bg={clip.gwfName?C.greenBg:C.amberBg}>{clip.gwfName?'GWF':'LOCAL'}</Tag>
+            </div>
+          ))}
+          {aiTransitions.map(item=>(
+            <div key={item.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:`1px solid ${C.border}`}}>
+              <Sparkles size={11} color={C.accent}/>
+              <div style={{flex:1,fontSize:10,color:C.textHi}}>transition_{item.id.slice(0,6)}.mp4</div>
+              <Tag color={item.transition.swfSaved?C.green:C.amber} bg={item.transition.swfSaved?C.greenBg:C.amberBg}>
+                {item.transition.swfSaved?'SAVED':'WILL UPLOAD'}
+              </Tag>
+            </div>
+          ))}
+          {audioUrl&&<div style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0'}}>
+            <Music size={11} color={C.amber}/>
+            <div style={{flex:1,fontSize:10,color:C.textHi,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{audioName||'audio.mp3'}</div>
+            <Tag color={audioSwfSaved?C.green:C.amber} bg={audioSwfSaved?C.greenBg:C.amberBg}>{audioSwfSaved?'SAVED':'WILL UPLOAD'}</Tag>
+          </div>}
+          {aiTotal>aiDone&&<div style={{fontSize:9,fontFamily:C.mono,color:C.amber,paddingTop:8}}>
+            <TriangleAlert size={10} style={{display:'inline',marginRight:5}}/>{aiTotal-aiDone} AI transition(s) not yet generated
+          </div>}
+        </div>
+        {/* Disk space warning */}
+        {serveOnline&&diskFreeGb!==null&&diskFreeGb<5&&<div style={{...card,background:C.redBg,border:`1px solid ${C.red}44`,marginBottom:10,padding:'8px 12px',display:'flex',alignItems:'center',gap:8}}>
+          <TriangleAlert size={11} color={C.red}/>
+          <span style={{fontSize:9,fontFamily:C.mono,color:C.red}}>LOW DISK: only {diskFreeGb.toFixed(1)} GB free — export may fail</span>
+        </div>}
+        {/* Export button(s) */}
+        {serveOnline?(
+          <div style={{display:'flex',gap:10,marginBottom:14}}>
+            <Btn onClick={startExport} disabled={!canExport} style={{flex:1,justifyContent:'center',padding:'12px 14px'}}>
+              <Download size={14}/>EXPORT COMPILATION
+            </Btn>
+            <button onClick={downloadScriptFallback} title="Download .ps1 script for manual run"
+              style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:5,padding:'8px 12px',cursor:'pointer',color:C.textDim,fontSize:9,fontFamily:C.mono,display:'flex',alignItems:'center',gap:5}}>
+              <Download size={11}/>SCRIPT
+            </button>
+          </div>
+        ):(
+          <div style={{marginBottom:14}}>
+            <div style={{...card,background:C.amberBg,border:`1px solid ${C.amber}44`,marginBottom:10,padding:'10px 12px'}}>
+              <div style={{fontSize:10,fontFamily:C.mono,color:C.amber,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+                <TriangleAlert size={11}/>EdgeVideo Console is offline — automated export disabled
+              </div>
+              <div style={{fontSize:9,fontFamily:C.mono,color:C.textDim,marginBottom:8,lineHeight:1.6}}>
+                Start the EdgeVideo Console from the Windows taskbar icon, or double-click <b>launch_EdgeVideo.bat</b>. The page will detect it within 30 seconds — or click RECHECK.
+              </div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                <button onClick={()=>{
+                  fetch(`${SERVE_URL}/api/workspace/info`).then(r=>{if(r.ok)location.reload();}).catch(()=>{});
+                }} style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:5,padding:'7px 12px',cursor:'pointer',color:C.textDim,fontSize:10,fontFamily:C.mono,display:'flex',alignItems:'center',gap:5}}>
+                  <RefreshCw size={11}/>RECHECK
+                </button>
+              </div>
+            </div>
+            <Btn onClick={downloadScriptFallback} disabled={!canExport} style={{width:'100%',justifyContent:'center',padding:'10px 14px'}}>
+              <Download size={14}/>OR DOWNLOAD EXPORT SCRIPT (.ps1)
+            </Btn>
+          </div>
+        )}
+        {timeline.length===0&&<div style={{...card,textAlign:'center',padding:32,color:C.textDim,fontSize:11}}>
+          <Download size={28} color={C.textDim} style={{margin:'0 auto 12px'}}/>
+          <div>Build your timeline first, then come back here to export</div>
+        </div>}
+      </>}
+    </div>
+  );
+}
+
+
+// ── ModArchive ────────────────────────────────────────────────────────────────
+function ModArchive({serveOnline}){
+  const C=useTheme();const secT=mkSecT(C),card=mkCard(C);
+  const [sessions,setSessions]=useState([]);
+  const [loading,setLoading]=useState(false);
+  const [actionSid,setActionSid]=useState(null);
+  const [saveMsg,setSaveMsg]=useState(null); // {sid,text,color}
+
+  const refresh=useCallback(async()=>{
+    if(!serveOnline)return;
+    setLoading(true);
+    try{
+      const r=await fetch(`${SERVE_URL}/api/session/list`);
+      const d=await r.json();
+      setSessions(d.sessions||[]);
+    }catch(e){console.warn('archive list failed',e);}
+    finally{setLoading(false);}
+  },[serveOnline]);
+
+  useEffect(()=>{refresh();},[refresh]);
+
+  const doPlay=async(sid)=>{
+    setActionSid(sid);
+    await fetch(`${SERVE_URL}/api/session/${sid}/play`,{method:'POST',body:''}).catch(()=>{});
+    setActionSid(null);
+  };
+  const doSaveAs=(sid,name)=>{
+    // Trigger a browser download — the browser's native Save dialog appears.
+    // No Tkinter dialog bridge needed.
+    const fname=(name||sid).replace(/\.mp4$/i,'')+'.mp4';
+    const a=document.createElement('a');
+    a.href=`${SERVE_URL}/api/session/${sid}/download`;
+    a.download=fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setSaveMsg({sid,text:'Download started — check your browser downloads.',color:C.green});
+    setTimeout(()=>setSaveMsg(m=>m&&m.sid===sid?null:m),4000);
+  };
+  const doDelete=async(sid)=>{
+    if(!confirm(`Delete session ${sid}? This cannot be undone.`))return;
+    setActionSid(sid);
+    await fetch(`${SERVE_URL}/api/session/${sid}`,{method:'DELETE'}).catch(()=>{});
+    setActionSid(null);
+    setSessions(prev=>prev.filter(s=>s.id!==sid));
+  };
+
+  return(
+    <div style={{animation:'fadeIn 0.2s ease'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+        <span style={secT}>EXPORT ARCHIVE</span>
+        <button onClick={refresh} disabled={loading||!serveOnline} title="Refresh"
+          style={{background:'transparent',border:`1px solid ${C.border}`,borderRadius:4,padding:'4px 8px',cursor:'pointer',color:C.textDim,display:'flex',alignItems:'center',gap:5}}>
+          <RefreshCw size={11} style={{animation:loading?'spin 1s linear infinite':undefined}}/><span style={{fontSize:9,fontFamily:C.mono}}>REFRESH</span>
+        </button>
+      </div>
+
+      {!serveOnline&&<div style={{...card,textAlign:'center',padding:32,color:C.amber}}>
+        <Archive size={28} color={C.amber} style={{margin:'0 auto 12px'}}/>
+        <div style={{fontSize:12}}>Start EdgeVideo Console to view saved compilations</div>
+      </div>}
+
+      {serveOnline&&sessions.length===0&&!loading&&<div style={{...card,textAlign:'center',padding:32,color:C.textDim}}>
+        <Archive size={28} color={C.textDim} style={{margin:'0 auto 12px'}}/>
+        <div style={{fontSize:12,color:C.textHi,marginBottom:6}}>No saved sessions yet</div>
+        <div style={{fontSize:10}}>Completed exports will appear here</div>
+      </div>}
+
+      {sessions.map(sess=>(
+        <div key={sess.id} style={{...card,marginBottom:12,display:'flex',gap:14,alignItems:'flex-start',padding:14,opacity:actionSid===sess.id?0.5:1}}>
+          {/* Thumbnail */}
+          <div style={{width:96,height:54,background:'#030810',borderRadius:5,overflow:'hidden',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',border:`1px solid ${C.border}`}}>
+            {sess.hasThumbnail
+              ?<img src={`${SERVE_URL}/api/session/${sess.id}/thumbnail?t=${Date.now()}`} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{e.target.style.display='none';}}/>
+              :<Video size={18} color={C.textDim}/>}
+          </div>
+          {/* Info */}
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,color:C.textHi,fontWeight:600,marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sess.projName||sess.id}</div>
+            <div style={{fontSize:9,fontFamily:C.mono,color:C.textDim,marginBottom:6,display:'flex',gap:10,flexWrap:'wrap'}}>
+              <span><Clock size={9} style={{display:'inline',marginRight:3}}/>{new Date(sess.created).toLocaleDateString()} {new Date(sess.created).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              {sess.duration>0&&<span>⏱ {fmtTime(sess.duration)}</span>}
+              {sess.clipCount>0&&<span>{sess.clipCount} clips</span>}
+              {sess.quality&&<span>{sess.quality}</span>}
+              {sess.outputSize>0&&<span>{(sess.outputSize/1e6).toFixed(1)} MB</span>}
+            </div>
+            <div style={{display:'flex',gap:7}}>
+              {sess.hasOutput&&<>
+                <button onClick={()=>doPlay(sess.id)} disabled={!!actionSid}
+                  style={{background:C.accentBg,border:`1px solid ${C.accent}44`,borderRadius:4,padding:'4px 10px',cursor:'pointer',color:C.accent,fontSize:9,fontFamily:C.mono,display:'flex',alignItems:'center',gap:4}}>
+                  <Play size={9}/>PLAY
+                </button>
+                <button onClick={()=>doSaveAs(sess.id,sess.projName)} disabled={!!actionSid}
+                  style={{background:C.blueBg,border:`1px solid ${C.blue}44`,borderRadius:4,padding:'4px 10px',cursor:'pointer',color:C.blue,fontSize:9,fontFamily:C.mono,display:'flex',alignItems:'center',gap:4}}>
+                  <Save size={9}/>SAVE AS…
+                </button>
+              </>}
+              {!sess.hasOutput&&<Tag color={C.textDim} bg={C.surface}>NO OUTPUT</Tag>}
+              <button onClick={()=>doDelete(sess.id)} disabled={!!actionSid}
+                style={{background:C.redBg,border:`1px solid ${C.red}33`,borderRadius:4,padding:'4px 10px',cursor:'pointer',color:C.red,fontSize:9,fontFamily:C.mono,display:'flex',alignItems:'center',gap:4}}>
+                <Trash2 size={9}/>DELETE
+              </button>
+            </div>
+            {saveMsg&&saveMsg.sid===sess.id&&(
+              <div style={{marginTop:6,fontSize:9,fontFamily:C.mono,color:saveMsg.color,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                {saveMsg.text}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────────────────────
+function EdgeVideo(){
+  const[theme,setTheme]=useState(()=>localStorage.getItem('ev_theme')||'dark');
+  const C=THEMES[theme];
+  useEffect(()=>{localStorage.setItem('ev_theme',theme);document.body.style.background=C.bg;},[theme,C.bg]);
+
+  const[mod,setMod]=useState('library');
+  const[showSettings,setShowSettings]=useState(false);
+  const[ollamaOk,setOllamaOk]=useState(null);
+  const[comfyOk,setComfyOk]=useState(null);
+  const[modelInfo,setModelInfo]=useState(null);
+  const[apiKeyInput,setApiKeyInput]=useState('');
+  const[ltxInput,setLtxInput]=useState(_ltxCkpt);
+  const[t5Input,setT5Input]=useState(_t5Encoder);
+  const[clips,setClips]=useState([]);
+  const[snippets,setSnippets]=useState([]);
+  const[timeline,setTimeline]=useState([]);
+  const[activeClipId,setActiveClipId]=useState(null);
+  const[audioUrl,setAudioUrl]=useState(null);
+  const[audioName,setAudioName]=useState('');
+  const[audioSwfSaved,setAudioSwfSaved]=useState(false);
+  const[beats,setBeats]=useState(null);
+  const[aiOut,setAiOut]=useState(null);
+  const[aiLoad,setAiLoad]=useState(false);
+  const[aiError,setAiError]=useState(null);
+  const[inferSrc,setInferSrc]=useState(null);
+  // GWF / SWF workspace
+  const[serveOnline,setServeOnline]=useState(false);
+  const[gwfPath,setGwfPath]=useState(null);
+  const[sessDir,setSessDir]=useState(null);
+  const[diskFreeGb,setDiskFreeGb]=useState(null);
+  const[sessionId,setSessionId]=useState(null);
+  const[swfPath,setSwfPath]=useState(null);
+  const sessionIdRef=useRef(null);
+  const swfPathRef=useRef(null);
+
+  // Ollama health
+  useEffect(()=>{
+    let alive=true;
+    async function check(){
+      try{const r=await fetch(`${OLLAMA_URL}/api/tags`);if(!r.ok)throw new Error();
+        const d=await r.json();const m=d.models?.find(x=>x.name===MODEL_ID||x.model===MODEL_ID);
+        if(!m)throw new Error();if(!alive)return;setOllamaOk(true);
+        setModelInfo(prev=>{const q=m.details?.quantization_level||'Q4_K_M',g=(m.size/1e9).toFixed(1);
+          if(prev&&prev.quant===q&&prev.size_gb===g)return prev;return{quant:q,size_gb:g,tok_s:prev?.tok_s||null};});}
+      catch{if(alive)setOllamaOk(false);}
+    }
+    // ComfyUI health
+    async function checkComfy(){
+      try{const r=await fetch(`${COMFY_URL}/system_stats`);if(alive)setComfyOk(r.ok);}
+      catch{if(alive)setComfyOk(false);}
+    }
+    check();checkComfy();
+    const iv1=setInterval(check,30000),iv2=setInterval(checkComfy,15000);
+    return()=>{alive=false;clearInterval(iv1);clearInterval(iv2);};
+  },[]);
+
+  // Workspace info — fetch from serve.ps1 on mount, then re-check every 30s
+  useEffect(()=>{
+    let alive=true;
+    function checkWorkspace(){
+      // Use explicit .then/.catch chains — avoids Babel async-generator issues
+      // with .finally() and bare catch{} in the same function
+      var tid=setTimeout(function(){}, 2000); // placeholder; real abort below
+      clearTimeout(tid);
+      fetch(SERVE_URL+'/api/workspace/info')
+        .then(function(r){
+          if(!r.ok)throw new Error('not ok');
+          return r.json();
+        })
+        .then(function(d){
+          if(!alive)return;
+          setServeOnline(true);
+          setGwfPath(d.gwf||null);
+          setSessDir(d.sessDir||null);
+          // Load GWF library
+          return fetch(SERVE_URL+'/api/library/list')
+            .then(function(lr){return lr.json();})
+            .then(function(ld){
+              if(!ld.files||!ld.files.length||!alive)return;
+              setClips(function(prev){
+                var updated=prev.map(function(c){
+                  if(c.gwfName)return c;
+                  var match=ld.files.find(function(f){return f.name.replace(/\.[^.]+$/,'')===c.name;});
+                  if(match)return Object.assign({},c,{gwfName:match.name,
+                    url:SERVE_URL+'/api/library/serve?name='+encodeURIComponent(match.name),
+                    duration:c.duration||match.duration||0});
+                  return c;
+                });
+                var linked=new Set(updated.filter(function(c){return c.gwfName;}).map(function(c){return c.gwfName;}));
+                var newFromGwf=ld.files
+                  .filter(function(f){return !linked.has(f.name);})
+                  .map(function(f){return{
+                    id:uid(),gwfName:f.name,name:f.name.replace(/\.[^.]+$/,''),
+                    url:SERVE_URL+'/api/library/serve?name='+encodeURIComponent(f.name),
+                    duration:f.duration||0,thumbnail:null,analysis:null,analyzing:false
+                  };});
+                return updated.concat(newFromGwf).slice(0,6);
+              });
+            })
+            .catch(function(){});
+        })
+        .catch(function(e){if(alive)setServeOnline(false);});
+    }
+    checkWorkspace();
+    var iv=setInterval(checkWorkspace,30000);
+    return function(){alive=false;clearInterval(iv);};
+  },[]);
+
+  // /api/status polling — disk free, service health (every 10s)
+  useEffect(()=>{
+    let alive=true;
+    function pollStatus(){
+      fetch(SERVE_URL+'/api/status')
+        .then(function(r){return r.ok?r.json():null;})
+        .then(function(d){
+          if(!d||!alive)return;
+          if(d.disk&&typeof d.disk.free_gb==='number')setDiskFreeGb(d.disk.free_gb);
+        })
+        .catch(function(){});
+    }
+    pollStatus();
+    var iv=setInterval(pollStatus,10000);
+    return function(){alive=false;clearInterval(iv);};
+  },[]);
+
+  // ensureSession: create once per app session, then reuse
+  const ensureSession=useCallback(async()=>{
+    if(sessionIdRef.current){return{sid:sessionIdRef.current,swf:swfPathRef.current};}
+    const r=await fetch(`${SERVE_URL}/api/session/create`,{method:'POST',body:''});
+    const d=await r.json();
+    sessionIdRef.current=d.sessionId;
+    swfPathRef.current=d.swfPath;
+    setSessionId(d.sessionId);
+    setSwfPath(d.swfPath);
+    return{sid:d.sessionId,swf:d.swfPath};
+  },[]);
+
+  // Sync timeline when snippets change
+  useEffect(()=>{
+    setTimeline(prev=>{
+      const existing=new Map(prev.map(t=>[t.snippetId,t]));
+      return snippets.map(sn=>existing.get(sn.id)||{id:uid(),snippetId:sn.id,transition:{type:'cut',prompt:'',videoUrl:null,generating:false,status:null,error:null}});
+    });
+  },[snippets]);
+
+  const onLoadFiles=useCallback(async(fileList)=>{
+    const allowed=Math.max(0,6-clips.length);
+    const files=Array.from(fileList).slice(0,allowed).filter(f=>f.type.startsWith('video/')||/\.(mp4|mov|webm|mkv|avi)$/i.test(f.name));
+    if(!files.length)return;
+
+    if(serveOnline){
+      // Upload to GWF, then create clip with serve URL
+      for(const file of files){
+        const id=uid();
+        const blobUrl=URL.createObjectURL(file);
+        // Add placeholder immediately so user sees it
+        setClips(prev=>[...prev,{id,gwfName:null,name:file.name.replace(/\.[^.]+$/,''),url:blobUrl,duration:0,thumbnail:null,analysis:null,analyzing:false,uploading:true}]);
+        // Async upload
+        try{
+          const r=await fetch(`${SERVE_URL}/api/library/upload`,{
+            method:'POST',
+            headers:{'X-Filename':file.name,'Content-Type':file.type||'application/octet-stream'},
+            body:file
+          });
+          const d=await r.json();
+          URL.revokeObjectURL(blobUrl);
+          const serveUrl=`${SERVE_URL}/api/library/serve?name=${encodeURIComponent(d.name)}`;
+          setClips(prev=>prev.map(c=>c.id===id?{...c,gwfName:d.name,url:serveUrl,duration:d.duration||0,uploading:false}:c));
+        }catch(e){
+          // Upload failed — keep blob URL so user can still use the clip
+          setClips(prev=>prev.map(c=>c.id===id?{...c,uploading:false}:c));
+          console.warn('GWF upload failed, using blob URL:',e&&e.message||String(e));
+        }
+        if(!activeClipId)setActiveClipId(id);
+      }
+    }else{
+      // Offline fallback — blob URLs only
+      const newClips=files.map(file=>{
+        const url=URL.createObjectURL(file);
+        const id=uid();
+        const vid=document.createElement('video');
+        vid.preload='metadata';vid.src=url;
+        vid.addEventListener('loadedmetadata',()=>{
+          setClips(prev=>prev.map(c=>c.id===id?{...c,duration:vid.duration}:c));
+        },{once:true});
+        return{id,file,url,name:file.name.replace(/\.[^.]+$/,''),duration:0,thumbnail:null,analysis:null,analyzing:false};
+      });
+      setClips(prev=>[...prev,...newClips]);
+      if(newClips.length&&!activeClipId)setActiveClipId(newClips[0].id);
+    }
+  },[clips.length,activeClipId,serveOnline]);
+
+  const onRemoveClip=useCallback(async(clip)=>{
+    if(clip.url?.startsWith('blob:'))URL.revokeObjectURL(clip.url);
+    if(serveOnline&&clip.gwfName){
+      fetch(`${SERVE_URL}/api/library/remove?name=${encodeURIComponent(clip.gwfName)}`,{method:'DELETE'}).catch(()=>{});
+    }
+    setClips(prev=>prev.filter(c=>c.id!==clip.id));
+    if(activeClipId===clip.id){
+      setActiveClipId(null);
+      setSnippets(prev=>prev.filter(s=>s.clipId!==clip.id));
+    }
+  },[serveOnline,activeClipId]);
+
+  const onAnalyzeClip=useCallback(async(clipId)=>{
+    setClips(prev=>prev.map(c=>c.id===clipId?{...c,analyzing:true,analysisError:null}:c));
+    try{
+      const clip=clips.find(c=>c.id===clipId);if(!clip)throw new Error('clip not found');
+      const vid=document.getElementById('ev-vid-'+clipId);
+      if(!vid)throw new Error('video element not mounted');
+      await new Promise((res,rej)=>{if(vid.readyState>=1)res();else{vid.addEventListener('loadedmetadata',res,{once:true});setTimeout(rej,5000);}});
+      const dur=vid.duration||clip.duration;
+      const times=[0.05,0.25,0.5,0.75,0.95].map(f=>f*dur);
+      const frames=[];
+      for(const t of times){try{frames.push(await extractFrameAsBase64(vid,t));}catch(_){}}
+      if(!frames.length)throw new Error('Could not extract frames');
+      const analysis=await analyzeClipWithGemma(frames);
+      setClips(prev=>prev.map(c=>c.id===clipId?{...c,analysis,analyzing:false}:c));
+    }catch(e){setClips(prev=>prev.map(c=>c.id===clipId?{...c,analyzing:false,analysisError:e.message}:c));setAiError(e.message);}
+  },[clips]);
+
+  const runAI=useCallback(async(sys,user,onDone)=>{
+    setAiLoad(true);setAiOut(null);setAiError(null);setInferSrc(null);
+    try{const res=await gemma4Call(sys,user,src=>setInferSrc(src));setAiOut(res);onDone?.(res);}
+    catch(e){setAiError(e.message);}finally{setAiLoad(false);}
+  },[]);
+
+  const MODS=[{id:'library',ic:'Film',lb:'Library'},{id:'snippets',ic:'Scissors',lb:'Snippets'},
+    {id:'timeline',ic:'Layers',lb:'Timeline'},{id:'effects',ic:'Wand',lb:'Effects'},
+    {id:'audio',ic:'Music',lb:'Audio'},{id:'export',ic:'Download',lb:'Export'},
+    {id:'archive',ic:'Archive',lb:'Archive'}];
+  const S=useMemo(()=>({inp:mkInp(C),lbl:mkLbl(C)}),[C]);
+
+  // Inspector panel content
+  const renderInspector=()=>{
+    if(mod==='library'){
+      const ac=clips.find(c=>c.id===activeClipId);
+      if(!ac)return<div style={{padding:16,fontSize:10,fontFamily:C.mono,color:C.textDim,textAlign:'center',paddingTop:40}}>Click a clip to inspect it</div>;
+      return(<div style={{padding:12}}>
+        <span style={mkSecT(C)}>CLIP INSPECTOR</span>
+        {ac.thumbnail&&<img src={ac.thumbnail} style={{width:'100%',borderRadius:5,marginBottom:10}}/>}
+        <div style={{fontSize:12,color:C.textHi,marginBottom:4,fontWeight:600}}>{ac.name}</div>
+        <div style={{fontSize:10,fontFamily:C.mono,color:C.textDim,marginBottom:10}}>{fmtTime(ac.duration)} duration</div>
+        {ac.analysis&&Object.entries(ac.analysis).filter(([k])=>k!=='raw').map(([k,v])=>(
+          <div key={k} style={{marginBottom:8}}>
+            <div style={{fontSize:8,fontFamily:C.mono,color:C.accent,letterSpacing:'0.1em',marginBottom:3}}>{k.toUpperCase().replace('_',' ')}</div>
+            {Array.isArray(v)
+              ?<div style={{display:'flex',gap:4,flexWrap:'wrap'}}>{v.map((x,i)=><Tag key={i} color={k==='color_palette'?x:undefined}>{typeof x==='string'&&x.startsWith('#')?<span style={{display:'inline-block',width:10,height:10,background:x,borderRadius:2,verticalAlign:'middle',marginRight:4}}/>:null}{x}</Tag>)}</div>
+              :<div style={{fontSize:10,color:C.text,lineHeight:1.6}}>{String(v)}</div>}
+          </div>
+        ))}
+        {!ac.analysis&&<div style={{fontSize:10,color:C.textDim,textAlign:'center',paddingTop:20}}>Click AI button on clip to analyze with Gemma 4 vision</div>}
+      </div>);
+    }
+    if(mod==='snippets'||mod==='timeline'){
+      const total=snippets.reduce((s,sn)=>s+(sn.outPoint-sn.inPoint),0);
+      return(<div style={{padding:12}}>
+        <span style={mkSecT(C)}>COMPILATION STATUS</span>
+        {[['Snippets',`${snippets.length} / 10`,C.textHi],['Total Duration',fmtTime(total),Math.abs(total-300)<30?C.green:C.amber],['Target Duration','5:00',C.textDim],['Remaining',fmtTime(Math.max(0,300-total)),total<300?C.accent:C.green]].map(([k,v,c])=>(
+          <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:`1px solid ${C.border}`,fontSize:10,fontFamily:C.mono}}>
+            <span style={{color:C.textDim}}>{k}</span><span style={{color:c}}>{v}</span>
+          </div>
+        ))}
+        {snippets.length>0&&<div style={{marginTop:12}}>
+          {snippets.map((sn,i)=><div key={sn.id} style={{fontSize:9,fontFamily:C.mono,color:C.textDim,padding:'3px 0',display:'flex',justifyContent:'space-between'}}>
+            <span style={{color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,marginRight:8}}>{i+1}. {sn.label}</span>
+            <span>{(sn.outPoint-sn.inPoint).toFixed(1)}s</span>
+          </div>)}
+        </div>}
+      </div>);
+    }
+    if(mod==='effects'){
+      const aiTotal=timeline.filter(t=>t.transition.type==='ltx-video').length;
+      const aiDone=timeline.filter(t=>t.transition.type==='ltx-video'&&t.transition.videoUrl).length;
+      const aiGen=timeline.filter(t=>t.transition.generating).length;
+      return(<div style={{padding:12}}>
+        <span style={mkSecT(C)}>COMFYUI STATUS</span>
+        {[['ComfyUI',comfyOk?'Online':'Offline',comfyOk?C.green:C.red],['LTX-Video',comfyOk?'Ready':'Waiting',comfyOk?C.accent:C.textDim],['AI Transitions',`${aiDone}/${aiTotal}`,aiDone===aiTotal&&aiTotal>0?C.green:C.amber],['Generating',aiGen>0?`${aiGen} active`:'Idle',aiGen>0?C.amber:C.textDim]].map(([k,v,c])=>(
+          <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:`1px solid ${C.border}`,fontSize:10,fontFamily:C.mono}}>
+            <span style={{color:C.textDim}}>{k}</span><span style={{color:c}}>{v}</span>
+          </div>
+        ))}
+        {aiLoad&&<div style={{marginTop:12,fontSize:10,fontFamily:C.mono,color:C.accent,display:'flex',gap:6,alignItems:'center'}}>
+          <Loader size={10} style={{animation:'spin 1s linear infinite'}}/>Gemma 4 running...
+        </div>}
+        {aiError&&<div style={{background:C.redBg,border:`1px solid ${C.red}33`,borderRadius:4,padding:'6px 8px',fontSize:10,fontFamily:C.mono,color:C.red,marginTop:10}}>⚠ {aiError}</div>}
+      </div>);
+    }
+    // Default: AI output
+    return(<div style={{padding:12}}>
+      <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:10}}>
+        <Sparkles size={12} color={C.accent}/>
+        <span style={{fontSize:9,fontFamily:C.mono,color:C.accent,letterSpacing:'0.12em'}}>GEMMA 4 OUTPUT</span>
+        {aiLoad&&<div style={{marginLeft:'auto',width:7,height:7,borderRadius:'50%',background:C.accent,animation:'pulse 1s infinite'}}/>}
+      </div>
+      {aiLoad&&<div style={{textAlign:'center',paddingTop:20}}><Loader size={18} color={C.accent} style={{animation:'spin 1s linear infinite',display:'block',margin:'0 auto 8px'}}/><div style={{fontSize:10,fontFamily:C.mono,color:C.textDim}}>INFERRING...</div></div>}
+      {aiError&&<div style={{background:C.redBg,border:`1px solid ${C.red}33`,borderRadius:4,padding:'8px',fontSize:10,fontFamily:C.mono,color:C.red}}>⚠ {aiError}</div>}
+      {!aiLoad&&aiOut&&<pre style={{fontSize:9,fontFamily:C.mono,color:C.text,whiteSpace:'pre-wrap',wordBreak:'break-word',lineHeight:1.7}}>{aiOut}</pre>}
+      {!aiLoad&&!aiOut&&!aiError&&<div style={{fontSize:10,fontFamily:C.mono,color:C.textDim,textAlign:'center',paddingTop:40,lineHeight:2}}>AI output<br/>appears here</div>}
+    </div>);
+  };
+
+  const renderMod=()=>{
+    switch(mod){
+      case'library':return<ModLibrary clips={clips} onLoadFiles={onLoadFiles} onAnalyzeClip={onAnalyzeClip} onRemoveClip={onRemoveClip} activeClipId={activeClipId} setActiveClipId={setActiveClipId} setMod={setMod} gwfPath={gwfPath} serveOnline={serveOnline}/>;
+      case'snippets':return<ModSnippets clips={clips} activeClipId={activeClipId} setActiveClipId={setActiveClipId} snippets={snippets} setSnippets={setSnippets} setMod={setMod}/>;
+      case'timeline':return<ModTimeline snippets={snippets} timeline={timeline} setTimeline={setTimeline} setMod={setMod}/>;
+      case'effects':return<ModEffects timeline={timeline} setTimeline={setTimeline} snippets={snippets} clips={clips} comfyOk={comfyOk} setComfyOk={setComfyOk} ollamaOk={ollamaOk} onEnsureSession={serveOnline?ensureSession:null}/>;
+      case'audio':return<ModAudio audioUrl={audioUrl} setAudioUrl={setAudioUrl} audioName={audioName} setAudioName={setAudioName} onEnsureSession={serveOnline?ensureSession:null} audioSwfSaved={audioSwfSaved} setAudioSwfSaved={setAudioSwfSaved}/>;
+      case'export':return<ModExport clips={clips} snippets={snippets} timeline={timeline} audioUrl={audioUrl} audioName={audioName} audioSwfSaved={audioSwfSaved} gwfPath={gwfPath} swfPath={swfPath} sessionId={sessionId} onEnsureSession={serveOnline?ensureSession:null} serveOnline={serveOnline} diskFreeGb={diskFreeGb}/>;
+      case'archive':return<ModArchive serveOnline={serveOnline}/>;
+      default:return null;
+    }
+  };
+
+  return(
+    <ThemeCtx.Provider value={C}>
+    <div style={{background:C.bg,borderRadius:10,overflow:'hidden',border:`1px solid ${C.border}`,display:'flex',flexDirection:'column',minHeight:780,fontFamily:C.sans,color:C.text}}>
+      {/* Header */}
+      <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:'0 14px',height:44,display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div style={{fontFamily:C.mono,fontSize:14,fontWeight:700,letterSpacing:'0.18em'}}><span style={{color:C.accent}}>EDGE</span><span style={{color:C.textHi}}>VIDEO</span></div>
+          <Tag>COMPILATION STUDIO</Tag>
+          <Tag color={ollamaOk?C.green:ollamaOk===false?C.red:C.amber} bg={ollamaOk?C.greenBg:ollamaOk===false?C.redBg:C.amberBg}>{ollamaOk===null?'CHECKING':ollamaOk?'GEMMA 4 LIVE':'OLLAMA OFFLINE'}</Tag>
+          <Tag color={comfyOk?C.green:comfyOk===false?C.red:C.amber} bg={comfyOk?C.greenBg:comfyOk===false?C.redBg:C.amberBg}>{comfyOk===null?'...':comfyOk?'COMFYUI LIVE':'COMFYUI OFFLINE'}</Tag>
+        </div>
+        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+          {[{id:'dark',label:'🌙'},{id:'light',label:'☀'},{id:'highvis',label:'⚡'}].map(t=>(
+            <button key={t.id} onClick={()=>setTheme(t.id)} style={{background:theme===t.id?C.accent:'transparent',color:theme===t.id?C.bg:C.textDim,border:`1px solid ${theme===t.id?C.accent:C.border}`,borderRadius:4,padding:'3px 8px',cursor:'pointer',fontSize:12}}>{t.label}</button>
+          ))}
+          <div style={{width:1,height:20,background:C.border,margin:'0 2px'}}/>
+          <button onClick={()=>setShowSettings(s=>!s)} style={{background:showSettings?C.accentBg:'transparent',border:`1px solid ${showSettings?C.accent:C.border}`,borderRadius:4,padding:'4px 8px',cursor:'pointer',display:'flex',alignItems:'center',gap:5}}>
+            <Settings size={12} color={showSettings?C.accent:C.textDim}/>
+            <span style={{fontSize:9,fontFamily:C.mono,color:showSettings?C.accent:C.textDim}}>SETTINGS</span>
+          </button>
+        </div>
+      </div>
+      {/* Settings */}
+      {showSettings&&<div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:'12px 18px',display:'flex',gap:20,alignItems:'flex-end',animation:'fadeIn 0.15s ease'}}>
+        <div style={{flex:1}}>
+          <label style={S.lbl}>Ollama — Gemma 4 E4B</label>
+          <input readOnly value={`${OLLAMA_URL}  |  ${MODEL_ID}  |  ${ollamaOk?(modelInfo?.quant||'')+'  '+(modelInfo?.size_gb||'')+'GB':'OFFLINE'}`} style={{...S.inp,color:ollamaOk?C.green:C.red,fontFamily:C.mono,fontSize:10}}/>
+        </div>
+        <div style={{flex:1}}>
+          <label style={S.lbl}>ComfyUI endpoint</label>
+          <div style={{display:'flex',gap:8}}>
+            <input readOnly value={`${COMFY_URL}  |  ${comfyOk?'Connected':'Offline'}`} style={{...S.inp,color:comfyOk?C.green:C.red,fontFamily:C.mono,fontSize:10,flex:1}}/>
+            <RestartComfyBtn setComfyOk={setComfyOk}/>
+          </div>
+        </div>
+        <div style={{flex:1}}>
+          <label style={S.lbl}>LTX-Video checkpoint (models/checkpoints/)</label>
+          <div style={{display:'flex',gap:8}}>
+            <input value={ltxInput} onChange={e=>setLtxInput(e.target.value)} style={{...S.inp,fontFamily:C.mono,fontSize:10,flex:1}}/>
+            <Btn onClick={()=>{_ltxCkpt=ltxInput.trim();setShowSettings(false);}} style={{flexShrink:0,padding:'6px 10px',fontSize:10}}><CircleCheck size={11}/>SET</Btn>
+          </div>
+        </div>
+        <div style={{flex:1}}>
+          <label style={S.lbl}>T5-XXL text encoder (models/text_encoders/)</label>
+          <div style={{display:'flex',gap:8}}>
+            <input value={t5Input} onChange={e=>setT5Input(e.target.value)} style={{...S.inp,fontFamily:C.mono,fontSize:10,flex:1}}/>
+            <Btn onClick={()=>{_t5Encoder=t5Input.trim();setShowSettings(false);}} style={{flexShrink:0,padding:'6px 10px',fontSize:10}}><CircleCheck size={11}/>SET</Btn>
+          </div>
+        </div>
+        <div style={{flex:1}}>
+          <label style={S.lbl}>Anthropic API key (fallback)</label>
+          <div style={{display:'flex',gap:8}}>
+            <input type="password" value={apiKeyInput} onChange={e=>setApiKeyInput(e.target.value)} placeholder="sk-ant-..." style={{...S.inp,fontFamily:C.mono,fontSize:10,flex:1}}/>
+            <Btn onClick={()=>{setAnthropicKey(apiKeyInput);setShowSettings(false);}} style={{flexShrink:0,padding:'6px 10px',fontSize:10}}><CircleCheck size={11}/>SAVE</Btn>
+          </div>
+        </div>
+      </div>}
+      {/* Body */}
+      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+        {/* Sidebar */}
+        <div style={{width:70,background:C.surface,borderRight:`1px solid ${C.border}`,display:'flex',flexDirection:'column',alignItems:'center',padding:'8px 0',gap:2,flexShrink:0}}>
+          {MODS.map(({id,ic,lb})=>(
+            <button key={id} onClick={()=>setMod(id)} style={{width:'100%',background:mod===id?C.panel:'transparent',border:'none',borderLeft:`2px solid ${mod===id?C.accent:'transparent'}`,color:mod===id?C.accent:C.textDim,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',padding:'10px 0',gap:4}}>
+              <SafeIcon name={ic} size={17}/><span style={{fontSize:8,fontFamily:C.mono,letterSpacing:'0.08em'}}>{lb.toUpperCase()}</span>
+            </button>
+          ))}
+          <div style={{marginTop:'auto',padding:'8px 0',display:'flex',flexDirection:'column',alignItems:'center',gap:5}}>
+            {[{ok:ollamaOk,lbl:'GEMMA'},{ok:comfyOk,lbl:'COMFY'}].map(({ok,lbl})=>(
+              <div key={lbl} style={{background:ok?C.greenBg:ok===false?C.redBg:C.amberBg,border:`1px solid ${ok?C.green:ok===false?C.red:C.amber}44`,borderRadius:4,padding:'3px 4px',width:46,textAlign:'center'}}>
+                <div style={{fontSize:7,fontFamily:C.mono,color:ok?C.green:ok===false?C.red:C.amber}}>{lbl}</div>
+                <div style={{fontSize:7,fontFamily:C.mono,color:ok?C.green:ok===false?C.red:C.amber,opacity:0.7}}>{ok===null?'...':ok?'LIVE':'OFF'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Module */}
+        <div style={{flex:1,padding:18,overflowY:'auto',minWidth:0}}>{renderMod()}</div>
+        {/* Inspector */}
+        <div style={{width:240,background:C.surface,borderLeft:`1px solid ${C.border}`,display:'flex',flexDirection:'column',flexShrink:0,overflowY:'auto'}}>
+          {renderInspector()}
+        </div>
+      </div>
+      {/* Status bar */}
+      <div style={{background:C.surface,borderTop:`1px solid ${C.border}`,height:36,display:'flex',alignItems:'center',padding:'0 14px',gap:16,flexShrink:0,fontSize:9,fontFamily:C.mono,color:C.textDim}}>
+        <span><span style={{color:C.accent}}>{clips.length}</span> clips</span>
+        <span><span style={{color:C.accent}}>{snippets.length}</span>/10 snippets</span>
+        <span><span style={{color:C.accent}}>{timeline.length}</span> in timeline</span>
+        <span><span style={{color:C.accent}}>{timeline.filter(t=>t.transition.type==='ltx-video'&&t.transition.videoUrl).length}</span> AI transitions done</span>
+        <span style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:8}}>
+          <div style={{width:6,height:6,borderRadius:'50%',background:serveOnline?C.green:C.textDim}}/>
+          <span style={{color:serveOnline?C.green:C.textDim,fontFamily:C.mono,fontSize:9}}>{serveOnline?'SERVER':'OFFLINE'}</span>
+          <span style={{color:C.textDim}}>  EdgeVideo v3.0  Gemma 4 + LTX-Video</span>
+        </span>
+      </div>
+    </div>
+    </ThemeCtx.Provider>
+  );
+}
+class ErrorBoundary extends React.Component{
+  constructor(p){super(p);this.state={err:null};}
+  static getDerivedStateFromError(e){return{err:e};}
+  componentDidCatch(e,info){const b=document.getElementById('ev-err');if(b){b.style.display='block';b.innerHTML='<h2>REACT RENDER ERROR</h2><pre>'+(e?.stack||e?.message||e)+'\n\nComponent trace:\n'+(info?.componentStack||'--')+'</pre>';}}
+  render(){return this.state.err?null:this.props.children;}
+}
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(ErrorBoundary,null,React.createElement(EdgeVideo)));
+</script>
+</body>
+</html>

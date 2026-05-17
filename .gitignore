@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Logs
+*.log
+_serve_run.log
+
+# EdgeVideo runtime data (user-specific, not for the repo)
+console_config.json
+console_state.json
+library_meta.json
+
+# Sessions and media output (can be large)
+sessions/
+
+# Junk / retired files folder
+junk/
+
+# Claude Code project settings (machine-specific)
+.claude/
+
+# Personal media files — large binaries, potential copyright
+# Users place their own clips here; not part of the source distribution
+videos/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets (never commit these)
+*.env
+.env*
+secrets.*
